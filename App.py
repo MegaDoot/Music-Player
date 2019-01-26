@@ -1,12 +1,15 @@
 import tkinter as tk
 import random
+import threading
 
 modes = ("Select", "Order", "Edit")
 hl_bg = "#4c4c4c" #Colour for when highlighted
+bg = "#212121"
+fg = "#afafaf"
 chars = ";4" #Pause and play in Webdings font
 key_move = {
   "<Right>":(lambda column:(0, 2 if column == 4 else 1)),
-  "<Left>":(lambda column:(0, -1)),
+  "<Left>":(lambda column:(0, -2 if column == 1 else -1)),
   "<Up>":(lambda column:(-1, 0)),
   "<Down>":(lambda column:(1, 0))
 }
@@ -14,10 +17,10 @@ column_widths = (50, 450, 200, 200, 200)
 
 def style(size = 0): 
   result = {
-    "bg":"#212121",
+    "bg":bg,
     }
   if size != 0:
-    result["fg"] = "#afafaf"
+    result["fg"] = fg
     result["font"] = ["Consolas", size]
   return result
 
@@ -36,7 +39,7 @@ class App(tk.Tk):
     self.configure(**style()) #bg value in dictionary returned only
     self.title("W.I.P")
 
-    self.tracks = [Track("Track #{}".format(i + 1), random.randint(30, 180)) for i in range(3)]
+    self.tracks = [Track("Track #{}".format(i + 1), random.randint(30, 180)) for i in range(10)]
     self.selection = (0, 0) #Selected track, selected attribute (edit mode only)
     self.modulo = (len(self.tracks), 5)
     self.mode = 0
@@ -51,10 +54,10 @@ class App(tk.Tk):
     self.mode_lbl.grid(row = 0, column = 1, sticky = "W")
     self.mode_frame.grid(row = 0, column = 0, columnspan = 2)
     
-    self.canvas = tk.Canvas(self, **style(), height = 300, width = 1100, highlightthickness = 0)
+    self.canvas = tk.Canvas(self, **style(), height = 375, width = 1100, highlightthickness = 0)
     self.song_frame = tk.Frame(self.canvas, **style())
-    self.song_scrollbar = tk.Scrollbar(self, orient = "vertical", command = self.canvas.yview, **style())
-    self.canvas.configure(yscrollcommand = self.song_scrollbar.set)
+    self.song_scrollbar = tk.Scrollbar(self, orient = "vertical", command = self.canvas.yview, activebackground = bg, troughcolor = bg, **style())
+    self.canvas.configure(yscrollcommand = lambda lo, hi:[print(lo, hi), self.song_scrollbar.set(lo, hi)])
 
     self.canvas.grid(row = 1, column = 0)
     self.canvas.create_window((0, 0), window = self.song_frame, anchor = "n")
@@ -96,6 +99,9 @@ class App(tk.Tk):
     else:
       track_frame_obj.highlight = range(5)
       self.selection[1] = 1
+    #0 1, 0.1 0.6, 0.2 0.7
+    val = 0.1 * self.selection[0]
+    self.song_scrollbar.set(val, val + 0.5)
 
 class Track:
   def __init__(self, name, track_length, trim_values = (0, 0), volume_modifier = 100):
@@ -110,7 +116,7 @@ class Track:
 
 class TrackFrame(tk.Frame):
   def __init__(self, parent, track):
-    super().__init__(parent, width = 1100, height = 50, bd = 0)
+    super().__init__(parent, width = 1100, height = 75, bd = 1)
     self.grid_propagate(0)
 
     text = (chars[0], "'{}'".format(track.name), "(-{}s, -{}s)".format(*track.trim), to_minutes(track.length), "{}%".format(track.volume_mod))
