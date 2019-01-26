@@ -56,8 +56,8 @@ class App(tk.Tk):
     
     self.canvas = tk.Canvas(self, **style(), height = 375, width = 1100, highlightthickness = 0)
     self.song_frame = tk.Frame(self.canvas, **style())
-    self.song_scrollbar = tk.Scrollbar(self, orient = "vertical", command = self.canvas.yview, activebackground = bg, troughcolor = bg, **style())
-    self.canvas.configure(yscrollcommand = lambda lo, hi:[print(lo, hi), self.song_scrollbar.set(lo, hi)])
+    self.song_scrollbar = tk.Scrollbar(self, orient = "vertical", command = lambda *args: [print(args), self.canvas.yview(*args)], activebackground = bg, troughcolor = bg, **style())
+    self.canvas.configure(yscrollcommand = self.song_scrollbar.set)
 
     self.canvas.grid(row = 1, column = 0)
     self.canvas.create_window((0, 0), window = self.song_frame, anchor = "n")
@@ -91,6 +91,8 @@ class App(tk.Tk):
     ##print("Before:", self.selection)
     self.selection =  [(self.selection[i] + change[i]) % self.modulo[i] for i in range(2)]
     ##print("After:", self.selection)
+    val = 0.1 * self.selection[0]
+    self.canvas.yview("moveto", val)
     for obj in self.track_frames:
       obj.highlight = []
     track_frame_obj = self.track_frames[self.selection[0]]
@@ -100,8 +102,7 @@ class App(tk.Tk):
       track_frame_obj.highlight = range(5)
       self.selection[1] = 1
     #0 1, 0.1 0.6, 0.2 0.7
-    val = 0.1 * self.selection[0]
-    self.song_scrollbar.set(val, val + 0.5)
+    ##self.song_scrollbar.set(val, val + 0.5)
 
 class Track:
   def __init__(self, name, track_length, trim_values = (0, 0), volume_modifier = 100):
