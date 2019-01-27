@@ -99,6 +99,9 @@ class App(tk.Tk):
       self.track_frames[i].grid(row = i, column = 0)
     self.track_frames[0].highlight = range(6)
 
+    self.play_thread = PlayThread(1, self.tracks[0], self)
+    self.play_thread.start()
+
     self.inc_mode(increment = 0)
     
     self.mainloop()
@@ -119,7 +122,8 @@ class App(tk.Tk):
     self.update_bar()
     track_frame_obj = self.track_frames[self.track_selection[0]]
     track_frame_obj.playing_state_set("toggle")
-    if track_frame_obj.track.playing:
+    print(track_frame_obj.track.playing)
+    """
       ##self.progress_pb.start(interval = 50)##round(10000 / len(track_frame_obj.track)))
       for i in range(10 * len(track_frame_obj.track)):
         self.progress_dv.set(self.progress_dv.get() + 0.1)
@@ -129,6 +133,8 @@ class App(tk.Tk):
     else:
       self.progress_pb.stop()
       ##self.progress_dv.set(0)
+    """
+  
 
   def inc_mode(self, event = None, increment = 1):
     self.mode = (self.mode + increment) % 3
@@ -154,6 +160,25 @@ class App(tk.Tk):
     
     ##if not self.tracks[self.selection[0]].playing:
       ##self.update_bar()
+
+class PlayThread(threading.Thread):
+  def __init__(self, thread_id, track, parent):
+    super().__init__()
+    self.id = thread_id
+    self.track = track
+    self.parent = parent
+  
+  def run(self):
+    print("Starting thread", self.id)
+    while self.parent.progress_dv.get() < len(self.track):
+      if self.track.playing:
+        time.sleep(0.1)
+        self.parent.progress_dv.set(self.parent.progress_dv.get() + 0.1)
+        self.parent.update_bar()
+    print("Exiting thread", self.id)
+  
+  def pause(self):
+    pass
 
 class Track:
   def __init__(self, name, track_length, trim_values = (0, 0), volume_modifier = 100, fade_time = 0):
