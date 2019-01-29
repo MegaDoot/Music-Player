@@ -13,19 +13,29 @@ import random
 import threading
 import time
 import os
+import soundfile
+import sys
+
+names_commands = (
+  ("pyglet","python -m pip install pyglet"),
+  ("soundfile","python -m pip install soundfile"),
+  ("mutagen.mp3", "python -m pip install mutagen"),
+  ("eyed3", "python -m pip install python-magic & python -m pip install eyed3"))
 
 py_path = os.__file__[:-10]
 paths = os.environ["PATH"].split(";")
 if not py_path in paths:
   os.environ["PATH"] += py_path + ";"
   print("Added python to PATH")
-
-for lib in ("pyglet", "mutagen"):
+##os.system("python -m pip install python_magic_bin-0.4.14-py2.py3-none-win32.whl")
+for i in range(len(names_commands)):
   try:
-    exec("import " + lib)
+    exec("import " + names_commands[i][0])
   except ImportError:
-    os.system("echo {0} not found; installing & python -m pip install {0}".format(lib))
-    exec("import " + lib)
+    os.system("echo {} not found; installing & {} & Pause".format(*names_commands[i]))
+    exec("import " + names_commands[i][0])
+
+##sys.exit()
 
 tracks_path = os.path.dirname(__file__) + r"\Tracks"
 attr_names = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time")
@@ -42,6 +52,24 @@ key_move = {
 }
 cutoff_length = 35
 column_widths = (80, 80, 420, 130, 130, 130, 130)
+
+def audio_length(file_name):
+  try:
+    file = soundfile.SoundFile(file_name)
+    value = len(file)/file.samplerate
+  except:
+    try:
+      file = mutagen.mp3.MP3(file_name)
+      if file is not None:
+        value = int(file.info.length)
+      else:
+        raise
+    except:
+      try:
+        value = int(eyed3.load(file_name).info.time_secs)
+      except:
+        value = 2013
+  return value
 
 def style(size = 0): 
   result = {
@@ -86,7 +114,8 @@ class App(tk.Tk):
     ttk_style.configure("TProgressbar", thickness = 5)
 
     os.chdir("Tracks")
-    self.tracks = [Track(os.listdir()[i], random.randint(5, 10), i) for i in range(len(os.listdir()))]
+    track_list = os.listdir()
+    self.tracks = [Track(os.listdir()[i], audio_length(track_list[i]), i) for i in range(len(track_list))]
     self.selection = (0, 0) #Selected track, selected attribute (edit mode only)
     self.track_selection = (0, 0)
     self.modulo = (len(self.tracks), len(column_widths))
@@ -234,6 +263,7 @@ class PlayThread(threading.Thread):
   def play(self):
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
+    print(len(self.track))
     condition = lambda:self.parent.progress_dv.get() < len(self.track)
     if not condition():
       self.parent.progress_dv.set(0)
