@@ -9,13 +9,14 @@ https://pythonhosted.org/pyglet/programming_guide/controlling_playback.html
 
 import tkinter as tk
 import tkinter.ttk as ttk
-import random
+import random #Testing
 import threading
 import time
 import os
 import soundfile
-import sys
+import sys #Testing
 import json
+import re
 #Also import pyglet, sounfile, mutagen.mp3 and eyed3
 
 NAMES_COMMANDS = (
@@ -44,7 +45,7 @@ MODES = ("Play", "Order", "Edit")
 HL_BG = "#4c4c4c" #Colour for when highlighted
 BG = "#212121"
 FG = "#afafaf"
-CHARS = "4;ar" #Pause, play, tick, cross in Webdings font
+CHARS = "4;ra" #Pause, play, cross, tick in Webdings font
 KEY_MOVE = {
   "<Right>":(lambda column:(0, 2 if column in (6, 1, 3) else 1)),
   "<Left>":(lambda column:(0, -2 if column in (1, 3 , 5) else -1)),
@@ -54,12 +55,12 @@ KEY_MOVE = {
 
 CUTOFF_LENGTH = 35 #How long a name can be before it is cut off and ended with and ellipsis
 COLUMN_WIDTHS = (80, 80, 420, 130, 130, 130, 130) #How much space is allocated to each widget
-DEFAULT_PARAMS = lambda name: [False, name, (0, 0), 100, 0] #Must be mutable
+DEFAULT_PARAMS = (False, (0.0, 0.0), 100, 0.0)
 
 def audio_length(file_name):
   try:
     file = soundfile.SoundFile(file_name)
-    value = len(file)/file.samplerate
+    value = len(file) / file.samplerate
   except:
     try:
       file = mutagen.mp3.MP3(file_name)
@@ -103,6 +104,10 @@ to_minutes = lambda seconds: "{}:{}".format(*map(two_digit, divmod(round(seconds
 
 two_digit = lambda n: ("0" if len(str(n)) == 1 else "") + str(n)
 
+is_float = lambda string: re.match(r"^[0-9]*\.?[0-9]*$", string) is not None
+
+float_ = lambda string: 0.0 if string == "." else float(string)
+
 class App(tk.Tk):
   def __init__(self):
     super().__init__()
@@ -117,20 +122,18 @@ class App(tk.Tk):
     ttk_style.configure("TProgressbar", thickness = 5)
 
     effects = json.loads(open(FILE_PATH + r"\Config\Effects.json", "r").read())
-    print(effects)
 
     os.chdir(FILE_PATH + r"\Tracks")
     track_list = os.listdir()
 
     for file in track_list: 
       if file not in effects.keys():
-        effects[file] = DEFAULT_PARAMS(file) #If new files added, make new set of default stats
+        effects[file] = list(DEFAULT_PARAMS) #If new files added, make new set of default stats
     for included in effects.keys():
       if included not in track_list:
-        del effects[included]
-    print(effects)
-
-    self.tracks = [Track(os.listdir()[i], audio_length(track_list[i]), i) for i in range(len(track_list))]
+        del effects[included] #If files have been removed, remove them
+    self.effects = effects
+    self.tracks = [Track(track_list[i], audio_length(track_list[i]), i, *effects[track_list[i]]) for i in range(len(track_list))]
     with open(FILE_PATH + r"\Config\Order.txt") as file:
       order = tuple(map(int, file.readlines()))
       self.tracks = [self.tracks[num] for num in order]
@@ -150,9 +153,9 @@ class App(tk.Tk):
     self.mode_lbl.grid(row = 0, column = 1, sticky = "W")
     self.top_frame.grid(row = 0, column = 0, columnspan = 2)
 
-    self.progress_dv = tk.DoubleVar(self, value = 0)
-    self.progress_dv.trace("w", self.update_bar)
-    self.progress_pb = ttk.Progressbar(self.top_frame, style = "TProgressbar", variable = self.progress_dv, length = 1000, mode = "determinate")
+    self.progress_dvar = tk.DoubleVar(self, value = 0)
+    self.progress_dvar.trace("w", self.update_bar)
+    self.progress_pb = ttk.Progressbar(self.top_frame, style = "TProgressbar", variable = self.progress_dvar, length = 1000, mode = "determinate")
     self.progress_pb.grid(row = 1, column = 0, columnspan = 2)
     self.time_lbl = tk.Label(self.top_frame, **style(20))
     self.time_lbl.grid(row = 2, column = 0, columnspan = 2)
@@ -176,7 +179,8 @@ class App(tk.Tk):
 
     self.song_frame.bind("<Configure>", self.on_frame_config)
     self.bind("<Shift_L>", self.inc_mode)
-    self.bind("<space>", self.play_pause)
+    self.bind("<space>", self.space_pressed)
+    self.bind("<Return>", self.enter_pressed)
     for k, v in KEY_MOVE.items():
       self.bind(k, lambda event, v = v: self.change_selection(v))
 
@@ -185,6 +189,7 @@ class App(tk.Tk):
       self.track_frames.append(TrackFrame(self.song_frame, self.tracks[i]))
       self.track_frames[i].grid(row = i, column = 0)
     self.track_frames[0].highlight = range(len(COLUMN_WIDTHS))
+    self.entry_present = False
 
     self.play_thread = PlayThread(1, self.tracks[0], self)
     self.play_thread.start()
@@ -194,26 +199,62 @@ class App(tk.Tk):
     self.mainloop()
 
   def save(self):
+    #Save order
     order = [track.num for track in self.tracks]
-    print(order)
-    os.chdir(os.path.dirname(__file__))
-    with open(r"Config\Order.txt", "w") as file:
+    os.chdir(os.path.dirname(__file__) + r"\Config")
+    with open(r"Order.txt", "w") as file:
       for n in order:
         file.write(str(n) + "\n")
+    
+    #Save effects
+    effects = {}
+    for track in self.tracks:
+      effects[str(track)] = track.compile_effects()
+    with open("Effects.json", "w") as file:
+      json.dump(effects, file)
   
   def update_bar(self, *events):
-    self.time_lbl.config(text = "{} / {}".format(to_minutes(self.progress_dv.get()), to_minutes(len(self.tracks[self.track_selection[0]]))))
+    self.time_lbl.config(text = "{} / {}".format(to_minutes(self.progress_dvar.get()), to_minutes(len(self.tracks[self.track_selection[0]]))))
   
   def on_frame_config(self, event):
     self.canvas.configure(scrollregion = self.canvas.bbox("all"))
   
-  def play_pause(self, *args):
+  def enter_pressed(self, event):
+    track_frame = self.track_frames[self.selection[0]]
+    if not self.entry_present or self.mode != 2:
+      return
+    if self.selection[1] == 3: #If trim selected
+      if event.widget == track_frame.trim_entries[0] and track_frame.trace_trim(0):
+        track_frame.trim_entries[1].focus_set()
+      elif event.widget == track_frame.trim_entries[1] and track_frame.trace_trim(1):
+        self.tracks[self.selection[0]].trim = list(map(lambda i:float_(i.get()), track_frame.trim_entries))
+        track_frame.update_text()
+        track_frame.trim_frame.grid_remove()
+        track_frame.grid_widget(3)
+        self.entry_present = False
+
+  def space_pressed(self, event):
+    if self.entry_present:
+      return
+    if self.mode == 2:
+      track_frame = self.track_frames[self.selection[0]]
+      if self.selection[1] == 1: #Loop
+        track_frame.track.loop = not track_frame.track.loop
+      elif self.selection[1] == 3: #Trim
+        print("Trim")
+        if not self.entry_present:
+          track_frame.labels[3].grid_remove()
+          track_frame.trim_frame.grid(row = 0, column = 3, sticky = "NESW")
+          track_frame.trim_entries[0].focus_set()
+          self.entry_present = True
+      self.track_frames[self.selection[0]].update_text()
+
     if self.mode != 0:
       return
     if self.track_selection != self.selection:
       for i in range(len(self.track_frames)):
         self.track_frames[i].playing_state_set(False)
-      self.progress_dv.set(0)
+      self.progress_dvar.set(0)
     self.track_selection = self.selection[:]
     self.update_bar()
     track_frame_obj = self.track_frames[self.track_selection[0]]
@@ -229,8 +270,9 @@ class App(tk.Tk):
       self.change_selection(lambda column:(0, 0))
 
   def change_selection(self, change):
+    if self.entry_present:
+      return
     change = change(self.selection[1])
-##    print("Before:", self.tracks)
     self.selection =  [(self.selection[i] + change[i]) % self.modulo[i] for i in range(2)]
 
     if self.mode == 1: #If order
@@ -277,9 +319,9 @@ class PlayThread(threading.Thread):
   def play(self):
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
-    condition = lambda:self.parent.progress_dv.get() < len(self.track)
+    condition = lambda:self.parent.progress_dvar.get() < len(self.track)
     if not condition():
-      self.parent.progress_dv.set(0)
+      self.parent.progress_dvar.set(0)
     while condition():
       if not self.track.playing:
         return
@@ -288,27 +330,39 @@ class PlayThread(threading.Thread):
         return
       self.parent.update()
       time.sleep(0.1)
-      self.parent.progress_dv.set(self.parent.progress_dv.get() + 0.1) #Automagically updates bar
+      self.parent.progress_dvar.set(self.parent.progress_dvar.get() + 0.1) #Automagically updates bar
     #Run below if ended by getting to the end
     track_frame_obj.playing_state_set(False)
 
 class Track:
-  def __init__(self, name, track_length, num, trim_values = (0, 0), volume_modifier = 100, fade_time = 0, loop = False):
+  def __init__(self, name, track_length, num, loop = False, trim_values = (0, 0), volume_modifier = 100, fade_time = 0):
+    """Note that 'num' is used so that the order can easily be kept track of,
+    meaning that saving is simply a matter of writing the 'num' of each object
+    to a text file."""
     self.name = name
     self.length = track_length
+    self.num = num
+    
+    self.loop = loop
     self.trim = trim_values[:]
     self.volume = volume_modifier
     self.fade = fade_time
-    self.loop = loop
+    
     self.playing = False
-    self.num = num
 
   def __len__(self):
+    """Objects of this class are NOT iterable. 'len' simply gets the length,
+    not the number of items stored in a certain variable as not such variable
+    exists in this class."""
     return self.length
 
   def __repr__(self):
+    """Simple string representation"""
     return self.name
 ##    return "(Name: '{}', Length: {}, Trim: {}, Volume Modifier: {}, Fade Time: {}, Loop: {}, Playing: {})".format(self.name, to_minutes(self.length), self.trim, self.volume, self.fade, self.loop, self.playing)
+
+  def compile_effects(self):
+    return (self.loop, self.trim, self.volume, self.fade)
 
 class TrackFrame(tk.Frame):
   def __init__(self, parent, track):
@@ -316,21 +370,58 @@ class TrackFrame(tk.Frame):
     self.grid_propagate(False)
 
     self.track = track
+    self.labels = []
+
+    self.trim_frame = tk.Frame(self, **style())
+    self.trim_frame.grid_propagate(True)
+    self.trim_frame.grid_rowconfigure(0, weight = 1)
+    for i in range(2):
+      self.trim_frame.grid_columnconfigure(i, weight = 1)
+    self.trim_entries = []
+    self.trim_svars = []
+    for i in range(2):
+      self.trim_svars.append(tk.StringVar(value = self.track.trim[i]))
+      self.trim_entries.append(tk.Entry(self.trim_frame, **style(15), insertbackground = style(1)["fg"], highlightthickness = 3, highlightbackground = style(1)["fg"], highlightcolor = style(1)["fg"], relief = "solid", width = 1, textvariable = self.trim_svars[i]))
+      self.trim_entries[i].grid(row = 0, column = i, sticky = "EW")
+      self.trim_svars[i].trace("w", lambda *args, i = i: self.trace_trim(i))
+
     self.update_text()
-    
     grid_config(self)
     for i in range(len(self.text)):
       style_dict = style(14)
       if i in (0, 1):
         style_dict["font"][0] = "Webdings"
-      tk.Label(self, **style_dict, text = self.text[i]).grid(row = 0, column = i, sticky = "NESW")
+      self.labels.append(tk.Label(self, **style_dict, text = self.text[i]))
+      self.grid_widget(i)
     self._highlight = []
 
   def __repr__(self):
     return "F " + repr(self.track)
+  
+  def grid_widget(self, n):
+    self.labels[n].grid(row = 0, column = n, sticky = "NESW")
 
   def update_text(self):
-    self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "(-{}s, -{}s)".format(*self.track.trim), to_minutes(len(self.track)), "{}%".format(self.track.volume), "{}s".format(self.track.fade))
+    """Set the value of self.text to what it should be (based on the current
+    state of self.track (if that is updated, this object is updated with this
+    method)"""
+    self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "({}s, {}s)".format(*self.track.trim), to_minutes(len(self.track)), "{}%".format(self.track.volume), "{}s".format(self.track.fade))
+    for i in range(len(self.labels)):
+      self.labels[i].config(text = self.text[i])
+  
+  def trace_trim(self, n):
+    """Convert the to the trim_entries[n] to the correct colour - normal if
+    valid and red if invalid. Note that '.' is accepted, being converted by
+    range_ to 0.0. Other examples: 5. and .5 are both allowed. Negative numbers
+    are not allowed and '+' is not either. Standard form/exponents to the power
+    if 10, such as '5e2' or `5E2` are ignored as they will not be needed in
+    this case."""
+    entry = self.trim_entries[n]
+    if is_float(entry.get()):
+      entry.config(fg = style(1)["fg"])
+      return True
+    entry.config(fg = "red")
+    return False
   
   @property
   def highlight(self):
@@ -339,16 +430,16 @@ class TrackFrame(tk.Frame):
   @highlight.setter
   def highlight(self, value):
     self._highlight = value
-    for i in range(len(self.winfo_children())):
-      self.winfo_children()[i].config(bg = (HL_BG if i in self.highlight else style()["bg"]))
+    for i in range(len(self.labels)):
+      self.labels[i].config(bg = (HL_BG if i in self.highlight else style()["bg"]))
   
   def playing_state_set(self, value):
     if value == "toggle":
       self.track.playing = not self.track.playing
     else:
       self.track.playing = value #Toggle
-    self.winfo_children()[0].config(text = CHARS[self.track.playing])
+    self.labels[0].config(text = CHARS[self.track.playing])
 
 if __name__ == "__main__":
   app = App()
-  self = app
+  ##self = app
