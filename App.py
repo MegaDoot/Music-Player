@@ -3,6 +3,9 @@ Usage:
   Shift to change mode
   Up and down buttons to change selected track
   Left and right to change selected attribute (edit mode only)
+  Space to play track (play mode)
+  Space to edit stat/effect (edit mode)
+  Enter to go to next entry/text box and confirm input (edit mode)
 
 https://pythonhosted.org/pyglet/programming_guide/controlling_playback.html
 """
@@ -84,6 +87,8 @@ def style(size = 0):
     result["font"] = ["Consolas", size]
   return result
 
+ENTRY_KW = {**style(15), **{"insertbackground":FG, "highlightthickness":3, "highlightbackground":FG, "highlightcolor":FG, "relief":"solid"}}
+
 def replace(dictionary, *kv): #For debugging purporses
   copy = dictionary.copy()
   for k, v in kv:
@@ -95,10 +100,16 @@ def add_ellipses(string):
     string = string[:CUTOFF_LENGTH - 3] + "..."
   return string
 
-def grid_config(frame):
+def grid_config(frame): #Set each column to constant width in accordance with COLUMN_WIDTHS
   frame.grid_rowconfigure(0, weight = 1)
   for i in range(len(COLUMN_WIDTHS)):
     frame.grid_columnconfigure(i, minsize = COLUMN_WIDTHS[i], weight = 1)
+
+def entry_frame_config(frame, columns = 1): #Set each column to constant width
+  frame.grid_propagate(True)
+  frame.grid_rowconfigure(0, weight = 1)
+  for i in range(columns):
+    frame.grid_columnconfigure(i, weight = 1)
 
 to_minutes = lambda seconds: "{}:{}".format(*map(two_digit, divmod(round(seconds), 60)))
 
@@ -191,6 +202,9 @@ class App(tk.Tk):
     self.track_frames[0].highlight = range(len(COLUMN_WIDTHS))
     self.entry_present = False
 
+    self.player = pyglet.media.Player()
+    for track in self.tracks:
+      self.player.queue(pyglet.media.load(repr(track)))
     self.play_thread = PlayThread(1, self.tracks[0], self)
     self.play_thread.start()
 
@@ -224,29 +238,41 @@ class App(tk.Tk):
     if not self.entry_present or self.mode != 2:
       return
     if self.selection[1] == 3: #If trim selected
-      if event.widget == track_frame.trim_entries[0] and track_frame.trace_trim(0):
-        track_frame.trim_entries[1].focus_set()
-      elif event.widget == track_frame.trim_entries[1] and track_frame.trace_trim(1):
-        self.tracks[self.selection[0]].trim = list(map(lambda i:float_(i.get()), track_frame.trim_entries))
+      if event.widget == track_frame.stat_entries[0] and track_frame.trace_trim(0): #If correct widget focus and valid input
+        track_frame.stat_entries[1].focus_set()
+      elif event.widget == track_frame.stat_entries[1] and track_frame.trace_trim(1):
+        self.tracks[self.selection[0]].trim = [float_(track_frame.stat_entries[i].get()) for i in range(2)]
         track_frame.update_text()
         track_frame.trim_frame.grid_remove()
         track_frame.grid_widget(3)
         self.entry_present = False
+    elif self.selection[1] in (5, 6) and track_frame.trace_trim(2) and track_frame.trace_trim(3): #Volume or fade
+      if self.selection[1] == 5:
+        self.tracks[self.selection[0]].volume = int(track_frame.stat_entries[2].get())
+      else:
+        self.tracks[self.selection[0]].fade = float_(track_frame.stat_entries[3].get())
+      track_frame.update_text()
+      track_frame.grid_widget(self.selection[1])
+      self.entry_present = False
 
   def space_pressed(self, event):
     if self.entry_present:
       return
-    if self.mode == 2:
+    if self.mode == 2 and not self.entry_present:
       track_frame = self.track_frames[self.selection[0]]
       if self.selection[1] == 1: #Loop
         track_frame.track.loop = not track_frame.track.loop
       elif self.selection[1] == 3: #Trim
         print("Trim")
-        if not self.entry_present:
-          track_frame.labels[3].grid_remove()
-          track_frame.trim_frame.grid(row = 0, column = 3, sticky = "NESW")
-          track_frame.trim_entries[0].focus_set()
-          self.entry_present = True
+        track_frame.labels[3].grid_remove()
+        track_frame.trim_frame.grid(row = 0, column = 3, sticky = "NESW")
+        track_frame.stat_entries[0].focus_set()
+      elif self.selection[1] in (5, 6):
+        print("Volume/Fade")
+        track_frame.labels[self.selection[1]].grid_remove()
+        track_frame.unique_frames[self.selection[1] - 5].grid(row = self.selection[0], column = self.selection[1], sticky = "NESW")
+        track_frame.stat_entries[self.selection[1] - 3].focus_set()
+      self.entry_present = True
       self.track_frames[self.selection[0]].update_text()
 
     if self.mode != 0:
@@ -373,17 +399,22 @@ class TrackFrame(tk.Frame):
     self.labels = []
 
     self.trim_frame = tk.Frame(self, **style())
-    self.trim_frame.grid_propagate(True)
-    self.trim_frame.grid_rowconfigure(0, weight = 1)
-    for i in range(2):
-      self.trim_frame.grid_columnconfigure(i, weight = 1)
-    self.trim_entries = []
-    self.trim_svars = []
-    for i in range(2):
-      self.trim_svars.append(tk.StringVar(value = self.track.trim[i]))
-      self.trim_entries.append(tk.Entry(self.trim_frame, **style(15), insertbackground = style(1)["fg"], highlightthickness = 3, highlightbackground = style(1)["fg"], highlightcolor = style(1)["fg"], relief = "solid", width = 1, textvariable = self.trim_svars[i]))
-      self.trim_entries[i].grid(row = 0, column = i, sticky = "EW")
-      self.trim_svars[i].trace("w", lambda *args, i = i: self.trace_trim(i))
+    ##
+    entry_frame_config(self.trim_frame, 2)
+    ##
+    
+    variables = self.track.trim + [self.track.volume, self.track.fade]
+    self.stat_entries = []
+    self.stat_svars = [tk.StringVar(value = variables[i]) for i in range(4)]
+    self.unique_frames = [tk.Frame(self, **style()) for i in range(2)]
+
+    #Loop below: 4 string variables for 4 entries (2 for trim, 1 for volume, 1 for fade)
+    for i in range(4): #Terary operators: 0 or 1 for trim, 2 or 3 for independent stats
+      self.stat_entries.append(tk.Entry((self.trim_frame if i <= 1 else self.unique_frames[i - 2]), textvariable = self.stat_svars[i], **ENTRY_KW, width = (4 if i <= 1 else 6)))
+      self.stat_entries[i].grid(row = 0, column = (i if i <= 1 else 0))
+      if i >= 2:
+        entry_frame_config(self.unique_frames[i -2], 1)
+      self.stat_svars[i].trace("w", lambda *args, i = i: self.trace_trim(i))
 
     self.update_text()
     grid_config(self)
@@ -410,14 +441,19 @@ class TrackFrame(tk.Frame):
       self.labels[i].config(text = self.text[i])
   
   def trace_trim(self, n):
-    """Convert the to the trim_entries[n] to the correct colour - normal if
+    """Convert the to the stat_entries[n] to the correct colour - normal if
     valid and red if invalid. Note that '.' is accepted, being converted by
     range_ to 0.0. Other examples: 5. and .5 are both allowed. Negative numbers
     are not allowed and '+' is not either. Standard form/exponents to the power
     if 10, such as '5e2' or `5E2` are ignored as they will not be needed in
     this case."""
-    entry = self.trim_entries[n]
-    if is_float(entry.get()):
+    entry = self.stat_entries[n]
+    self.stat_svars[n].set(self.stat_svars[n].get().replace(" ", ""))
+    if n == 2:
+      valid = re.match(r"^\d+$", entry.get()) is not None
+    else:
+      valid = is_float(entry.get())
+    if valid:
       entry.config(fg = style(1)["fg"])
       return True
     entry.config(fg = "red")
