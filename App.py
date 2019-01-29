@@ -15,43 +15,46 @@ import time
 import os
 import soundfile
 import sys
+import json
+#Also import pyglet, sounfile, mutagen.mp3 and eyed3
 
-names_commands = (
+NAMES_COMMANDS = (
   ("pyglet","python -m pip install pyglet"),
   ("soundfile","python -m pip install soundfile"),
   ("mutagen.mp3", "python -m pip install mutagen"),
   ("eyed3", "python -m pip install python-magic & python -m pip install eyed3"))
 
-py_path = os.__file__[:-10]
-paths = os.environ["PATH"].split(";")
-if not py_path in paths:
-  os.environ["PATH"] += py_path + ";"
+PY_PATH = os.__file__[:-10] #Any library will do
+PATHS = os.environ["PATH"].split(";")
+if not PY_PATH in PATHS:
+  os.environ["PATH"] += PY_PATH + ";"
   print("Added python to PATH")
 ##os.system("python -m pip install python_magic_bin-0.4.14-py2.py3-none-win32.whl")
-for i in range(len(names_commands)):
+for i in range(len(NAMES_COMMANDS)):
   try:
-    exec("import " + names_commands[i][0])
+    exec("import " + NAMES_COMMANDS[i][0])
   except ImportError:
-    os.system("echo {} not found; installing & {} & Pause".format(*names_commands[i]))
-    exec("import " + names_commands[i][0])
-
+    os.system("echo {} not found; installing & {} & Pause".format(*NAMES_COMMANDS[i]))
+    exec("import " + NAMES_COMMANDS[i][0])
 ##sys.exit()
 
-tracks_path = os.path.dirname(__file__) + r"\Tracks"
-attr_names = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time")
-modes = ("Play", "Order", "Edit")
-hl_bg = "#4c4c4c" #Colour for when highlighted
-bg = "#212121"
-fg = "#afafaf"
-chars = "4;ar" #Pause, play, tick, cross in Webdings font
-key_move = {
+FILE_PATH = os.path.dirname(__file__)
+ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time")
+MODES = ("Play", "Order", "Edit")
+HL_BG = "#4c4c4c" #Colour for when highlighted
+BG = "#212121"
+FG = "#afafaf"
+CHARS = "4;ar" #Pause, play, tick, cross in Webdings font
+KEY_MOVE = {
   "<Right>":(lambda column:(0, 2 if column in (6, 1, 3) else 1)),
   "<Left>":(lambda column:(0, -2 if column in (1, 3 , 5) else -1)),
   "<Up>":(lambda column:(-1, 0)),
   "<Down>":(lambda column:(1, 0))
 }
-cutoff_length = 35
-column_widths = (80, 80, 420, 130, 130, 130, 130)
+
+CUTOFF_LENGTH = 35 #How long a name can be before it is cut off and ended with and ellipsis
+COLUMN_WIDTHS = (80, 80, 420, 130, 130, 130, 130) #How much space is allocated to each widget
+DEFAULT_PARAMS = lambda name: [False, name, (0, 0), 100, 0] #Must be mutable
 
 def audio_length(file_name):
   try:
@@ -73,10 +76,10 @@ def audio_length(file_name):
 
 def style(size = 0): 
   result = {
-    "bg":bg,
+    "bg":BG,
     }
   if size != 0:
-    result["fg"] = fg
+    result["fg"] = FG
     result["font"] = ["Consolas", size]
   return result
 
@@ -87,14 +90,14 @@ def replace(dictionary, *kv): #For debugging purporses
   return copy
 
 def add_ellipses(string):
-  if len(string) >= cutoff_length:
-    string = string[:cutoff_length - 3] + "..."
+  if len(string) >= CUTOFF_LENGTH:
+    string = string[:CUTOFF_LENGTH - 3] + "..."
   return string
 
 def grid_config(frame):
   frame.grid_rowconfigure(0, weight = 1)
-  for i in range(len(column_widths)):
-    frame.grid_columnconfigure(i, minsize = column_widths[i], weight = 1)
+  for i in range(len(COLUMN_WIDTHS)):
+    frame.grid_columnconfigure(i, minsize = COLUMN_WIDTHS[i], weight = 1)
 
 to_minutes = lambda seconds: "{}:{}".format(*map(two_digit, divmod(round(seconds), 60)))
 
@@ -103,7 +106,7 @@ two_digit = lambda n: ("0" if len(str(n)) == 1 else "") + str(n)
 class App(tk.Tk):
   def __init__(self):
     super().__init__()
-    self.configure(**style()) #bg value in dictionary returned only
+    self.configure(**style()) #BG value in dictionary returned only
     self.title("W.I.P")
     self.pack_propagate(True)
     self.resizable(0, 0)
@@ -113,12 +116,27 @@ class App(tk.Tk):
     ttk_style.theme_use("default")
     ttk_style.configure("TProgressbar", thickness = 5)
 
-    os.chdir("Tracks")
+    effects = json.loads(open(FILE_PATH + r"\Config\Effects.json", "r").read())
+    print(effects)
+
+    os.chdir(FILE_PATH + r"\Tracks")
     track_list = os.listdir()
+
+    for file in track_list: 
+      if file not in effects.keys():
+        effects[file] = DEFAULT_PARAMS(file) #If new files added, make new set of default stats
+    for included in effects.keys():
+      if included not in track_list:
+        del effects[included]
+    print(effects)
+
     self.tracks = [Track(os.listdir()[i], audio_length(track_list[i]), i) for i in range(len(track_list))]
+    with open(FILE_PATH + r"\Config\Order.txt") as file:
+      order = tuple(map(int, file.readlines()))
+      self.tracks = [self.tracks[num] for num in order]
     self.selection = (0, 0) #Selected track, selected attribute (edit mode only)
     self.track_selection = (0, 0)
-    self.modulo = (len(self.tracks), len(column_widths))
+    self.modulo = (len(self.tracks), len(COLUMN_WIDTHS))
     self.end = False
     self.mode = 0
     self.top_frame = tk.Frame(height = 60, width = 1120, **style())
@@ -134,7 +152,7 @@ class App(tk.Tk):
 
     self.progress_dv = tk.DoubleVar(self, value = 0)
     self.progress_dv.trace("w", self.update_bar)
-    self.progress_pb = ttk.Progressbar(self.top_frame, maximum = len(self.tracks[0]), style = "TProgressbar", variable = self.progress_dv, length = 1000, mode = "determinate")
+    self.progress_pb = ttk.Progressbar(self.top_frame, style = "TProgressbar", variable = self.progress_dv, length = 1000, mode = "determinate")
     self.progress_pb.grid(row = 1, column = 0, columnspan = 2)
     self.time_lbl = tk.Label(self.top_frame, **style(20))
     self.time_lbl.grid(row = 2, column = 0, columnspan = 2)
@@ -143,13 +161,13 @@ class App(tk.Tk):
     self.category_frame = tk.Frame(self, height = 30, width = 1100, **style())
     self.category_frame.grid_propagate(False)
     grid_config(self.category_frame)
-    for i in range(len(column_widths)):
-      tk.Label(self.category_frame, text = "<{}>".format(attr_names[i]), **style(12)).grid(row = 0, column = i)
+    for i in range(len(COLUMN_WIDTHS)):
+      tk.Label(self.category_frame, text = "<{}>".format(ATTR_NAMES[i]), **style(12)).grid(row = 0, column = i)
     self.category_frame.grid(row = 1, column = 0, sticky = "W")
     
     self.canvas = tk.Canvas(self, **style(), height = 375, width = 1100, highlightthickness = 0)
     self.song_frame = tk.Frame(self.canvas, **style())
-    self.scrollbar = tk.Scrollbar(self, orient = "vertical", command = self.canvas.yview, activebackground = bg, troughcolor = bg, **style())
+    self.scrollbar = tk.Scrollbar(self, orient = "vertical", command = self.canvas.yview, activebackground = BG, troughcolor = BG, **style())
     self.canvas.configure(yscrollcommand = self.scrollbar.set)
 
     self.canvas.grid(row = 2, column = 0, pady = 10)
@@ -159,15 +177,14 @@ class App(tk.Tk):
     self.song_frame.bind("<Configure>", self.on_frame_config)
     self.bind("<Shift_L>", self.inc_mode)
     self.bind("<space>", self.play_pause)
-    for k, v in key_move.items():
+    for k, v in KEY_MOVE.items():
       self.bind(k, lambda event, v = v: self.change_selection(v))
 
     self.track_frames = []
     for i in range(len(self.tracks)):
       self.track_frames.append(TrackFrame(self.song_frame, self.tracks[i]))
       self.track_frames[i].grid(row = i, column = 0)
-    print(self.track_frames[0].track)
-    self.track_frames[0].highlight = range(len(column_widths))
+    self.track_frames[0].highlight = range(len(COLUMN_WIDTHS))
 
     self.play_thread = PlayThread(1, self.tracks[0], self)
     self.play_thread.start()
@@ -202,12 +219,13 @@ class App(tk.Tk):
     track_frame_obj = self.track_frames[self.track_selection[0]]
     track_frame_obj.playing_state_set("toggle")
     if track_frame_obj.track.playing:
+      self.progress_pb.config(maximum = len(self.tracks[self.track_selection[0]]))
       self.play_thread.play()
     
   def inc_mode(self, event = None, increment = 1):
     if not self.tracks[self.selection[0]].playing:
       self.mode = (self.mode + increment) % 3
-      self.mode_lbl.config(text = modes[self.mode])
+      self.mode_lbl.config(text = MODES[self.mode])
       self.change_selection(lambda column:(0, 0))
 
   def change_selection(self, change):
@@ -219,7 +237,6 @@ class App(tk.Tk):
       pos = self.selection[0]
       edits = (pos, (pos - change[0]) % len(self.tracks))
       self.tracks[edits[0]], self.tracks[edits[1]] = self.tracks[edits[1]], self.tracks[edits[0]]
-      print("Switching:", edits)
       for i in range(2):
         self.track_frames[edits[i]].destroy()
         new = edits[i]
@@ -231,15 +248,12 @@ class App(tk.Tk):
     if self.mode == 2: #Edit mode
       track_frame_obj.highlight = [self.selection[1]]
     else: #Select or order mode
-      track_frame_obj.highlight = range(len(column_widths))
+      track_frame_obj.highlight = range(len(COLUMN_WIDTHS))
       self.selection[1] = 1
 
     bottom = int(self.scrollbar.get()[1] * len(self.track_frames))
     if not self.selection[0] in range(bottom - 5, bottom):
       self.canvas.yview("moveto", (self.selection[0] / len(self.track_frames)))
-    
-    ##if not self.tracks[self.selection[0]].playing:
-      ##self.update_bar()
 
   def end(self):
     self.save()
@@ -263,7 +277,6 @@ class PlayThread(threading.Thread):
   def play(self):
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
-    print(len(self.track))
     condition = lambda:self.parent.progress_dv.get() < len(self.track)
     if not condition():
       self.parent.progress_dv.set(0)
@@ -275,8 +288,7 @@ class PlayThread(threading.Thread):
         return
       self.parent.update()
       time.sleep(0.1)
-      self.parent.progress_dv.set(self.parent.progress_dv.get() + 0.1)
-      self.parent.update_bar()
+      self.parent.progress_dv.set(self.parent.progress_dv.get() + 0.1) #Automagically updates bar
     #Run below if ended by getting to the end
     track_frame_obj.playing_state_set(False)
 
@@ -318,7 +330,7 @@ class TrackFrame(tk.Frame):
     return "F " + repr(self.track)
 
   def update_text(self):
-    self.text = (chars[0], chars[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "(-{}s, -{}s)".format(*self.track.trim), to_minutes(len(self.track)), "{}%".format(self.track.volume), "{}s".format(self.track.fade))
+    self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "(-{}s, -{}s)".format(*self.track.trim), to_minutes(len(self.track)), "{}%".format(self.track.volume), "{}s".format(self.track.fade))
   
   @property
   def highlight(self):
@@ -328,14 +340,14 @@ class TrackFrame(tk.Frame):
   def highlight(self, value):
     self._highlight = value
     for i in range(len(self.winfo_children())):
-      self.winfo_children()[i].config(bg = (hl_bg if i in self.highlight else style()["bg"]))
+      self.winfo_children()[i].config(bg = (HL_BG if i in self.highlight else style()["bg"]))
   
   def playing_state_set(self, value):
     if value == "toggle":
       self.track.playing = not self.track.playing
     else:
       self.track.playing = value #Toggle
-    self.winfo_children()[0].config(text = chars[self.track.playing])
+    self.winfo_children()[0].config(text = CHARS[self.track.playing])
 
 if __name__ == "__main__":
   app = App()
