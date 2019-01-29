@@ -42,6 +42,12 @@ for i in range(len(NAMES_COMMANDS)):
     exec("import " + NAMES_COMMANDS[i][0])
 ##sys.exit()
 
+try:
+  pyglet.lib.load_library("avbin")
+  print("Success: Found AVBin")
+except ImportError:
+  print(r"Go to https://www.mediafire.com/file/64vjttya35alh7k/avbin.rar and download the file. Put avbin.dll into C:\Windows\System")
+
 FILE_PATH = os.path.dirname(__file__)
 ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time")
 MODES = ("Play", "Order", "Edit")
@@ -203,10 +209,14 @@ class App(tk.Tk):
     self.entry_present = False
 
     self.player = pyglet.media.Player()
-    for track in self.tracks:
-      self.player.queue(pyglet.media.load(repr(track)))
+    ##for track in self.tracks:
+      ##self.player.queue(pyglet.media.load(repr(track)))
+    self.music_thread = MusicThread(1, self.tracks[0], self)
+    self.music_thread.start()
     self.play_thread = PlayThread(1, self.tracks[0], self)
     self.play_thread.start()
+    
+
 
     self.inc_mode(increment = 0)
     
@@ -263,12 +273,10 @@ class App(tk.Tk):
       if self.selection[1] == 1: #Loop
         track_frame.track.loop = not track_frame.track.loop
       elif self.selection[1] == 3: #Trim
-        print("Trim")
         track_frame.labels[3].grid_remove()
         track_frame.trim_frame.grid(row = 0, column = 3, sticky = "NESW")
         track_frame.stat_entries[0].focus_set()
       elif self.selection[1] in (5, 6):
-        print("Volume/Fade")
         track_frame.labels[self.selection[1]].grid_remove()
         track_frame.unique_frames[self.selection[1] - 5].grid(row = self.selection[0], column = self.selection[1], sticky = "NESW")
         track_frame.stat_entries[self.selection[1] - 3].focus_set()
@@ -277,7 +285,11 @@ class App(tk.Tk):
 
     if self.mode != 0:
       return
-    if self.track_selection != self.selection:
+
+    if self.track_selection != self.selection: #New item selected
+      self.music_thread.pause()
+      self.media_player(repr(self.tracks[self.selection[0]]))
+      self.music_thread.set_track(self.tracks[self.selection[0]])
       for i in range(len(self.track_frames)):
         self.track_frames[i].playing_state_set(False)
       self.progress_dvar.set(0)
@@ -288,6 +300,13 @@ class App(tk.Tk):
     if track_frame_obj.track.playing:
       self.progress_pb.config(maximum = len(self.tracks[self.track_selection[0]]))
       self.play_thread.play()
+  
+  def media_player(self, track_name):
+    self.music_thread.pause()
+    del self.player
+    self.player = pyglet.media.Player()
+    source = pyglet.media.load(track_name)
+    self.player.queue(source)
     
   def inc_mode(self, event = None, increment = 1):
     if not self.tracks[self.selection[0]].playing:
@@ -343,13 +362,18 @@ class PlayThread(threading.Thread):
     self.play()
 
   def play(self):
+    self.parent.focus_set()
+    self.parent.music_thread.play()
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
-    condition = lambda:self.parent.progress_dvar.get() < len(self.track)
+    condition = lambda:self.parent.progress_dvar.get() < (len(self.track) - self.track.trim[1])
     if not condition():
-      self.parent.progress_dvar.set(0)
+      ##self.parent.media_player(repr(self.parent.tracks[self.parent.selection[0]]))
+      print("Progress = 0")
+      self.parent.progress_dvar.set(track_frame_obj.track.trim[0])
     while condition():
       if not self.track.playing:
+        self.parent.music_thread.pause()
         return
       if self.parent.end:
         self.parent.destroy()
@@ -358,7 +382,29 @@ class PlayThread(threading.Thread):
       time.sleep(0.1)
       self.parent.progress_dvar.set(self.parent.progress_dvar.get() + 0.1) #Automagically updates bar
     #Run below if ended by getting to the end
+    print("End")
+    self.parent.media_player(repr(self.parent.tracks[self.parent.selection[0]]))
     track_frame_obj.playing_state_set(False)
+
+class MusicThread(threading.Thread):
+  def __init__(self, thread_id, track, parent):
+    super().__init__(daemon = True)
+    self.thread_id = thread_id
+    self.track = track
+    self.parent = parent
+  
+  def set_track(self, track):
+    self.pause()
+    self.track = track
+
+  def run(self):
+    self.play()
+  
+  def play(self):
+    self.parent.player.play()
+  
+  def pause(self):
+    self.parent.player.pause()
 
 class Track:
   def __init__(self, name, track_length, num, loop = False, trim_values = (0, 0), volume_modifier = 100, fade_time = 0):
