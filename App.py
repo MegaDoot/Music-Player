@@ -16,7 +16,7 @@ Usage:
   Edit:
     Left and right to change selected attribute
     Space to edit stat/effect
-    Space to go to next entry/text box and confirm input
+    Enter to go to next entry/text box and confirm input
 
 https://pythonhosted.org/pyglet/programming_guide/controlling_playback.html
 """
@@ -53,7 +53,6 @@ for i in range(len(NAMES_COMMANDS)):
     exec("import " + NAMES_COMMANDS[i][0])
 
 try:
-  import sdasdasd
   pyglet.lib.load_library("avbin")
   print("Success: Found AVbin")
 except ImportError:
@@ -167,14 +166,24 @@ class App(tk.Tk):
     for file in track_list: 
       if file not in effects.keys():
         effects[file] = list(DEFAULT_PARAMS) #If new files added, make new set of default stats
-    for included in effects.keys():
+    effect_copy = list(effects.keys())
+    ##print(effect_copy)
+    for included in effect_copy:
       if included not in track_list:
         del effects[included] #If files have been removed, remove them
+    del effect_copy
     self.effects = effects
     self.tracks = [Track(track_list[i], audio_length(track_list[i]), i, *effects[track_list[i]]) for i in range(len(track_list))]
+    print(self.tracks)
     with open(FILE_PATH + r"\Config\Order.txt") as file:
       order = tuple(map(int, file.readlines()))
+      order = [el for el in order if el < len(self.tracks)]
+      if order == []:
+        order = list(range(len(self.tracks)))
+      print("order = {}".format(order))
+      print(self.tracks)
       self.tracks = [self.tracks[num] for num in order]
+      print(self.tracks)
     self.selection = (0, 0) #Selected track, selected attribute (edit mode only)
     self.track_selection = (0, 0)
     self.modulo = (len(self.tracks), len(COLUMN_WIDTHS))
@@ -217,33 +226,34 @@ class App(tk.Tk):
 
     self.song_frame.bind("<Configure>", self.on_frame_config)
     self.bind("<Shift_L>", self.shift_pressed)
-    self.bind("<space>", self.space_pressed)
-    self.bind("<Return>", self.enter_pressed)
-    for k, v in KEY_MOVE.items():
-      self.bind(k, lambda event, v = v: self.change_selection(v))
+    if len(self.tracks) != 0:
+      self.bind("<space>", self.space_pressed)
+      self.bind("<Return>", self.enter_pressed)
+      for k, v in KEY_MOVE.items():
+        self.bind(k, lambda event, v = v: self.change_selection(v))
 
     self.track_frames = []
     for i in range(len(self.tracks)):
       self.track_frames.append(TrackFrame(self.song_frame, self.tracks[i]))
       self.track_frames[i].grid(row = i, column = 0)
-    self.track_frames[0].highlight = range(len(COLUMN_WIDTHS))
+    if len(self.tracks) != 0:
+      self.track_frames[0].highlight = range(len(COLUMN_WIDTHS))
     self.entry_present = False
 
     self.player = pyglet.media.Player()
-    ##for track in self.tracks:
-      ##self.player.queue(pyglet.media.load(repr(track)))
-    ##self.music_thread = MusicThread(1, self.tracks[0], self)
-    ##self.music_thread.start()
-    self.play_thread = PlayThread(1, self.tracks[0], self)
-    self.play_thread.start()
-    
 
+    if len(self.tracks) != 0:
+      self.play_thread = PlayThread(1, self.tracks[0], self)
+      self.play_thread.start()
 
     self.shift_pressed(increment = 0) 
     
     self.mainloop()
 
   def save(self):
+    if len(self.tracks) == 0:
+      print("Not saved")
+      return
     #Save order
     order = [track.num for track in self.tracks]
     os.chdir(os.path.dirname(__file__) + r"\Config")
@@ -259,7 +269,10 @@ class App(tk.Tk):
       json.dump(effects, file)
   
   def update_bar(self, *events):
-    self.time_lbl.config(text = "{} / {}".format(to_minutes(self.progress_dvar.get()), to_minutes(len(self.tracks[self.track_selection[0]]))))
+    if len(self.tracks) == 0:
+      self.time_lbl.config(text = "")
+    else:
+      self.time_lbl.config(text = "{} / {}".format(to_minutes(self.progress_dvar.get()), to_minutes(len(self.tracks[self.track_selection[0]]))))
   
   def on_frame_config(self, event):
     self.canvas.configure(scrollregion = self.canvas.bbox("all"))
@@ -289,7 +302,7 @@ class App(tk.Tk):
   def space_pressed(self, event):
     if self.entry_present:
       return
-    if self.mode == 2 and not self.entry_present:
+    if self.mode == 2 and not self.entry_present: #Edit
       track_frame = self.track_frames[self.selection[0]]
       if self.selection[1] == 1: #Loop
         track_frame.track.loop = not track_frame.track.loop
@@ -304,8 +317,10 @@ class App(tk.Tk):
         track_frame.stat_entries[self.selection[1] - 3].focus_set()
         self.entry_present = True
       self.track_frames[self.selection[0]].update_text()
+      return #Only play if order or select
 
-    if self.mode == 2: #Only play if order or select
+    if self.mode == 1: #Order, save
+      self.save()
       return
 
     if self.track_selection != self.selection: #New item selected
@@ -342,7 +357,8 @@ class App(tk.Tk):
   def shift_pressed(self, event = None, increment = 1): #Increment mode
     self.mode = (self.mode + increment) % 3
     self.mode_lbl.config(text = MODES[self.mode])
-    self.change_selection(lambda column:(0, 0))
+    if len(self.tracks) != 0:
+      self.change_selection(lambda column:(0, 0))
 
   def change_selection(self, change):
     if self.entry_present:
@@ -381,8 +397,8 @@ class App(tk.Tk):
           seek = len(track) - track.trim[1]
       if change[1] != 0:
         self.player.seek(seek)
-        
-        ##self.tracks[self.selection[0]]
+        self.progress_dvar.set(self.player.time)
+        self.update_bar()
 
     bottom = int(self.scrollbar.get()[1] * len(self.track_frames))
     if not self.selection[0] in range(bottom - 5, bottom):
@@ -391,12 +407,15 @@ class App(tk.Tk):
   def end(self):
     self.player.pause()
     self.save()
-    if self.tracks[self.selection[0]].playing:
+    if len(self.tracks) != 0 and self.tracks[self.selection[0]].playing:
       print("Running")
       self.end = True
     else:
       print("Not running")
-      self.play_thread.parent.destroy()
+      if hasattr(self, "play_thread"):
+        self.play_thread.parent.destroy()
+      else:
+        self.destroy()
 
 class PlayThread(threading.Thread):
   def __init__(self, thread_id, track, parent):
@@ -415,24 +434,25 @@ class PlayThread(threading.Thread):
     self.parent.player.volume = self.track.volume / 100
     condition = lambda:self.parent.progress_dvar.get() < 0.1 + (len(self.track) - self.track.trim[1])
     if not condition():
-      ##self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
-      print("Progress = {}".format(track_frame_obj.track.trim[0]))
+##      print("Progress = {}".format(track_frame_obj.track.trim[0]))
       self.parent.progress_dvar.set(track_frame_obj.track.trim[0])
     while condition():
       if not self.track.playing:
         self.parent.player.pause()
-        print("Pausing")
         return
       if self.parent.end:
-        print("Ending")
         self.parent.destroy()
         return
+
+      start_fade = len(self.track) - self.track.trim[1] - self.track.fade
+      if self.track.fade != 0 and self.parent.player.time >= start_fade:
+        self.parent.player.volume = 100 * (1 - ((self.parent.player.time - start_fade) / self.track.fade)) #NOT WORKING
+##        print(self.parent.player.volume)
+      else:
+        self.parent.player.volume = self.track.volume
       self.parent.update()
-      ##self.parent.progress_dvar.set(self.parent.progress_dvar.get() + 0.1) #Automagically updates bar
-      ##print(self.parent.player.time)
       self.parent.progress_dvar.set(self.parent.player.time)
-    #Run below if ended by getting to the end
-    print("End")
+    #Run code below if ended by getting to the end
     self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
     if self.track.loop:
       self.play()
@@ -502,7 +522,7 @@ class TrackFrame(tk.Frame):
     entry_frame_config(self.trim_frame, 2)
     ##
     
-    variables = self.track.trim + [self.track.volume, self.track.fade]
+    variables = tuple(self.track.trim) + (self.track.volume, self.track.fade)
     self.stat_entries = []
     self.stat_svars = [tk.StringVar(value = variables[i]) for i in range(4)]
     self.unique_frames = [tk.Frame(self, **style()) for i in range(2)]
@@ -580,4 +600,3 @@ class TrackFrame(tk.Frame):
 
 if __name__ == "__main__":
   app = App()
-  ##self = app
