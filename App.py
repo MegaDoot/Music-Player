@@ -277,12 +277,12 @@ class App(tk.Tk):
         track_frame.labels[3].grid_remove()
         track_frame.trim_frame.grid(row = 0, column = 3, sticky = "NESW")
         track_frame.stat_entries[0].focus_set()
+        self.entry_present = True
       elif self.selection[1] in (5, 6):
         track_frame.labels[self.selection[1]].grid_remove()
-        print("Grid at {}".format(self.selection[0]))
-        track_frame.unique_frames[self.selection[1] - 5].grid(row = self.selection[0], column = self.selection[1], sticky = "NESW")
+        track_frame.unique_frames[self.selection[1] - 5].grid(row = 0, column = self.selection[1], sticky = "NESW")
         track_frame.stat_entries[self.selection[1] - 3].focus_set()
-      self.entry_present = True
+        self.entry_present = True
       self.track_frames[self.selection[0]].update_text()
 
     if self.mode != 0:
