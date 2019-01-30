@@ -1,11 +1,22 @@
 """
 Usage:
-  Shift to change mode
-  Up and down buttons to change selected track
-  Left and right to change selected attribute (edit mode only)
-  Space to play track (play mode)
-  Space to edit stat/effect (edit mode)
-  Enter to go to next entry/text box and confirm input (edit mode)
+  Universal:
+    Shift to change mode
+
+  Select:
+    Up and down buttons to change selected track
+    Left and right to go backwards/forwards 5 seconds
+    Space to play track
+
+  Order:
+    Up and down buttons to move selected track up and down
+    Left and right to go backwards/forwards 5 seconds
+    Space to save order & effects (done automatically when closed)
+  
+  Edit:
+    Left and right to change selected attribute
+    Space to edit stat/effect
+    Space to go to next entry/text box and confirm input
 
 https://pythonhosted.org/pyglet/programming_guide/controlling_playback.html
 """
@@ -40,18 +51,27 @@ for i in range(len(NAMES_COMMANDS)):
   except ImportError:
     os.system("echo {} not found; installing & {} & Pause".format(*NAMES_COMMANDS[i]))
     exec("import " + NAMES_COMMANDS[i][0])
-##sys.exit()
 
 try:
+  import sdasdasd
   pyglet.lib.load_library("avbin")
-  print("Success: Found AVBin")
+  print("Success: Found AVbin")
 except ImportError:
-  print(r"""Go to https://www.mediafire.com/file/64vjttya35alh7k/avbin.rar and download the file. Put avbin.dll into C:\Windows\System
-  Tutorials:""")
+  print(r"""Go to https://www.mediafire.com/file/64vjttya35alh7k/avbin.rar and download the file.
+
+Put avbin.dll into 'C:\Windows\System'.
+Note that you cannot install this with pip.
+It is required for 'pyglet' to handle compressed files.
+
+Tutorials at:
+  https://www.youtube.com/watch?v=dQw4w9WgXcQ
+  https://www.youtube.com/watch?v=zZbWX8Q2bsk""")
+  input("\nPress any key to continue...")
+  sys.exit()
 
 FILE_PATH = os.path.dirname(__file__)
 ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time")
-MODES = ("Play", "Order", "Edit")
+MODES = ("Select", "Order", "Edit")
 HL_BG = "#4c4c4c" #Colour for when highlighted
 BG = "#212121"
 FG = "#afafaf"
@@ -196,7 +216,7 @@ class App(tk.Tk):
     self.scrollbar.grid(row = 2, column = 1, sticky = "NSW")
 
     self.song_frame.bind("<Configure>", self.on_frame_config)
-    self.bind("<Shift_L>", self.inc_mode)
+    self.bind("<Shift_L>", self.shift_pressed)
     self.bind("<space>", self.space_pressed)
     self.bind("<Return>", self.enter_pressed)
     for k, v in KEY_MOVE.items():
@@ -219,7 +239,7 @@ class App(tk.Tk):
     
 
 
-    self.inc_mode(increment = 0)
+    self.shift_pressed(increment = 0) 
     
     self.mainloop()
 
@@ -285,7 +305,7 @@ class App(tk.Tk):
         self.entry_present = True
       self.track_frames[self.selection[0]].update_text()
 
-    if self.mode != 0:
+    if self.mode == 2: #Only play if order or select
       return
 
     if self.track_selection != self.selection: #New item selected
@@ -303,9 +323,10 @@ class App(tk.Tk):
     if track_frame_obj.track.playing:
       self.progress_pb.config(maximum = len(self.tracks[self.track_selection[0]]))
       seek_time = self.tracks[self.selection[0]].trim[0]
-      if seek_time > 0: #This appears to be a bug with pyglet, where it will constantly reset set to 0 if 0
-        print("trim[0] = {}".format(seek_time))
-        self.player.seek(seek_time)
+      if self.player.time < seek_time: #Only set if it's below (otherwise, resume)
+        if seek_time > 0: #This appears to be a bug with pyglet, where it will constantly reset set to 0 if 0
+          print("trim[0] = {}".format(seek_time))
+          self.player.seek(seek_time)
       self.play_thread.play()
   
   def media_player(self, track_obj):
@@ -314,16 +335,14 @@ class App(tk.Tk):
     self.player = pyglet.media.Player()
     source = pyglet.media.load(repr(track_obj))
     self.player.queue(source)
-    self.player.volume = track_obj.volume / 100
     print(track_obj.trim)
     self.progress_dvar.set(track_obj.trim[0])
     self.focus_set()
     
-  def inc_mode(self, event = None, increment = 1):
-    if not self.tracks[self.selection[0]].playing:
-      self.mode = (self.mode + increment) % 3
-      self.mode_lbl.config(text = MODES[self.mode])
-      self.change_selection(lambda column:(0, 0))
+  def shift_pressed(self, event = None, increment = 1): #Increment mode
+    self.mode = (self.mode + increment) % 3
+    self.mode_lbl.config(text = MODES[self.mode])
+    self.change_selection(lambda column:(0, 0))
 
   def change_selection(self, change):
     if self.entry_present:
@@ -348,6 +367,22 @@ class App(tk.Tk):
     else: #Select or order mode
       track_frame_obj.highlight = range(len(COLUMN_WIDTHS))
       self.selection[1] = 1
+
+      track = self.tracks[self.selection[0]]
+      if change[1] < 0:
+        seek = self.player.time - 5
+        if seek < track.trim[0]:
+          seek = track.trim[0]
+        if seek == 0:
+          seek = 0.01
+      elif change[1] > 0:
+        seek = self.player.time + 5
+        if seek > len(track) - track.trim[1]:
+          seek = len(track) - track.trim[1]
+      if change[1] != 0:
+        self.player.seek(seek)
+        
+        ##self.tracks[self.selection[0]]
 
     bottom = int(self.scrollbar.get()[1] * len(self.track_frames))
     if not self.selection[0] in range(bottom - 5, bottom):
@@ -374,11 +409,10 @@ class PlayThread(threading.Thread):
     self.play()
 
   def play(self):
-    ##self.parent.music_thread.play()
-    #self.parent.player.seek(self.track.trim[0])
     self.parent.player.play()
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
+    self.parent.player.volume = self.track.volume / 100
     condition = lambda:self.parent.progress_dvar.get() < 0.1 + (len(self.track) - self.track.trim[1])
     if not condition():
       ##self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
