@@ -46,7 +46,8 @@ try:
   pyglet.lib.load_library("avbin")
   print("Success: Found AVBin")
 except ImportError:
-  print(r"Go to https://www.mediafire.com/file/64vjttya35alh7k/avbin.rar and download the file. Put avbin.dll into C:\Windows\System")
+  print(r"""Go to https://www.mediafire.com/file/64vjttya35alh7k/avbin.rar and download the file. Put avbin.dll into C:\Windows\System
+  Tutorials:""")
 
 FILE_PATH = os.path.dirname(__file__)
 ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time")
@@ -121,7 +122,7 @@ to_minutes = lambda seconds: "{}:{}".format(*map(two_digit, divmod(round(seconds
 
 two_digit = lambda n: ("0" if len(str(n)) == 1 else "") + str(n)
 
-is_float = lambda string: re.match(r"^[0-9]*\.?[0-9]*$", string) is not None
+is_float = lambda string: re.match(r"^[0-9]*\.?[0-9]*$", string) is not None and string != "" 
 
 float_ = lambda string: 0.0 if string == "." else float(string)
 
@@ -211,8 +212,8 @@ class App(tk.Tk):
     self.player = pyglet.media.Player()
     ##for track in self.tracks:
       ##self.player.queue(pyglet.media.load(repr(track)))
-    self.music_thread = MusicThread(1, self.tracks[0], self)
-    self.music_thread.start()
+    ##self.music_thread = MusicThread(1, self.tracks[0], self)
+    ##self.music_thread.start()
     self.play_thread = PlayThread(1, self.tracks[0], self)
     self.play_thread.start()
     
@@ -278,6 +279,7 @@ class App(tk.Tk):
         track_frame.stat_entries[0].focus_set()
       elif self.selection[1] in (5, 6):
         track_frame.labels[self.selection[1]].grid_remove()
+        print("Grid at {}".format(self.selection[0]))
         track_frame.unique_frames[self.selection[1] - 5].grid(row = self.selection[0], column = self.selection[1], sticky = "NESW")
         track_frame.stat_entries[self.selection[1] - 3].focus_set()
       self.entry_present = True
@@ -287,9 +289,10 @@ class App(tk.Tk):
       return
 
     if self.track_selection != self.selection: #New item selected
-      self.music_thread.pause()
+      print("new")
+      self.player.pause()
       self.media_player(self.tracks[self.selection[0]])
-      self.music_thread.set_track(self.tracks[self.selection[0]])
+      ##self.music_thread.set_track(self.tracks[self.selection[0]])
       for i in range(len(self.track_frames)):
         self.track_frames[i].playing_state_set(False)
       self.progress_dvar.set(0)
@@ -299,15 +302,22 @@ class App(tk.Tk):
     track_frame_obj.playing_state_set("toggle")
     if track_frame_obj.track.playing:
       self.progress_pb.config(maximum = len(self.tracks[self.track_selection[0]]))
+      seek_time = self.tracks[self.selection[0]].trim[0]
+      if seek_time > 0: #This appears to be a bug with pyglet, where it will constantly reset set to 0 if 0
+        print("trim[0] = {}".format(seek_time))
+        self.player.seek(seek_time)
       self.play_thread.play()
   
   def media_player(self, track_obj):
-    self.music_thread.pause()
+    self.player.pause()
     del self.player
     self.player = pyglet.media.Player()
     source = pyglet.media.load(repr(track_obj))
     self.player.queue(source)
     self.player.volume = track_obj.volume / 100
+    print(track_obj.trim)
+    self.progress_dvar.set(track_obj.trim[0])
+    self.focus_set()
     
   def inc_mode(self, event = None, increment = 1):
     if not self.tracks[self.selection[0]].playing:
@@ -344,6 +354,7 @@ class App(tk.Tk):
       self.canvas.yview("moveto", (self.selection[0] / len(self.track_frames)))
 
   def end(self):
+    self.player.pause()
     self.save()
     if self.tracks[self.selection[0]].playing:
       print("Running")
@@ -354,7 +365,7 @@ class App(tk.Tk):
 
 class PlayThread(threading.Thread):
   def __init__(self, thread_id, track, parent):
-    super().__init__(daemon = True)
+    super().__init__(daemon = False)
     self.id = thread_id
     self.track = track
     self.parent = parent
@@ -363,33 +374,40 @@ class PlayThread(threading.Thread):
     self.play()
 
   def play(self):
-    self.parent.focus_set()
-    self.parent.music_thread.play()
+    ##self.parent.music_thread.play()
+    #self.parent.player.seek(self.track.trim[0])
+    self.parent.player.play()
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
-    condition = lambda:self.parent.progress_dvar.get() < (len(self.track) - self.track.trim[1])
+    condition = lambda:self.parent.progress_dvar.get() < 0.1 + (len(self.track) - self.track.trim[1])
     if not condition():
       ##self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
-      print("Progress = 0")
+      print("Progress = {}".format(track_frame_obj.track.trim[0]))
       self.parent.progress_dvar.set(track_frame_obj.track.trim[0])
     while condition():
       if not self.track.playing:
-        self.parent.music_thread.pause()
+        self.parent.player.pause()
+        print("Pausing")
         return
       if self.parent.end:
+        print("Ending")
         self.parent.destroy()
         return
       self.parent.update()
-      time.sleep(0.1)
-      self.parent.progress_dvar.set(self.parent.progress_dvar.get() + 0.1) #Automagically updates bar
+      ##self.parent.progress_dvar.set(self.parent.progress_dvar.get() + 0.1) #Automagically updates bar
+      ##print(self.parent.player.time)
+      self.parent.progress_dvar.set(self.parent.player.time)
     #Run below if ended by getting to the end
     print("End")
     self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
-    track_frame_obj.playing_state_set(False)
+    if self.track.loop:
+      self.play()
+    else:
+      track_frame_obj.playing_state_set(False)
 
 class MusicThread(threading.Thread):
   def __init__(self, thread_id, track, parent):
-    super().__init__(daemon = True)
+    super().__init__(daemon = False)
     self.thread_id = thread_id
     self.track = track
     self.parent = parent
@@ -494,12 +512,15 @@ class TrackFrame(tk.Frame):
     are not allowed and '+' is not either. Standard form/exponents to the power
     if 10, such as '5e2' or `5E2` are ignored as they will not be needed in
     this case."""
-    entry = self.stat_entries[n]
     self.stat_svars[n].set(self.stat_svars[n].get().replace(" ", ""))
+    entry = self.stat_entries[n]
+    value = self.stat_svars[n].get()
     if n == 2:
-      valid = re.match(r"^\d+$", entry.get()) is not None
+      valid = re.match(r"^\d+$", value) is not None and int(value) >= 0 and int(value) <= 100
+    elif n == 3:
+      valid = is_float(value) and float_(value) <= (len(self.track) - (self.track.trim[0] + self.track.trim[1]))
     else:
-      valid = is_float(entry.get())
+      valid = is_float(value)
     if valid:
       entry.config(fg = style(1)["fg"])
       return True
