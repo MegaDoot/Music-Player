@@ -288,7 +288,7 @@ class App(tk.Tk):
 
     if self.track_selection != self.selection: #New item selected
       self.music_thread.pause()
-      self.media_player(repr(self.tracks[self.selection[0]]))
+      self.media_player(self.tracks[self.selection[0]])
       self.music_thread.set_track(self.tracks[self.selection[0]])
       for i in range(len(self.track_frames)):
         self.track_frames[i].playing_state_set(False)
@@ -301,12 +301,13 @@ class App(tk.Tk):
       self.progress_pb.config(maximum = len(self.tracks[self.track_selection[0]]))
       self.play_thread.play()
   
-  def media_player(self, track_name):
+  def media_player(self, track_obj):
     self.music_thread.pause()
     del self.player
     self.player = pyglet.media.Player()
-    source = pyglet.media.load(track_name)
+    source = pyglet.media.load(repr(track_obj))
     self.player.queue(source)
+    self.player.volume = track_obj.volume / 100
     
   def inc_mode(self, event = None, increment = 1):
     if not self.tracks[self.selection[0]].playing:
@@ -368,7 +369,7 @@ class PlayThread(threading.Thread):
     self.track = track_frame_obj.track
     condition = lambda:self.parent.progress_dvar.get() < (len(self.track) - self.track.trim[1])
     if not condition():
-      ##self.parent.media_player(repr(self.parent.tracks[self.parent.selection[0]]))
+      ##self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
       print("Progress = 0")
       self.parent.progress_dvar.set(track_frame_obj.track.trim[0])
     while condition():
@@ -383,7 +384,7 @@ class PlayThread(threading.Thread):
       self.parent.progress_dvar.set(self.parent.progress_dvar.get() + 0.1) #Automagically updates bar
     #Run below if ended by getting to the end
     print("End")
-    self.parent.media_player(repr(self.parent.tracks[self.parent.selection[0]]))
+    self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
     track_frame_obj.playing_state_set(False)
 
 class MusicThread(threading.Thread):
