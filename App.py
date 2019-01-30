@@ -271,7 +271,7 @@ class App(tk.Tk):
     if len(self.tracks) == 0:
       self.time_lbl.config(text = "")
     else:
-      self.time_lbl.config(text = "{} / {}".format(to_minutes(self.progress_dvar.get()), to_minutes(len(self.tracks[self.track_selection[0]]))))
+      self.time_lbl.config(text = "{} / {}".format(to_minutes(self.progress_dvar.get()), to_minutes(self.tracks[self.track_selection[0]].length)))
   
   def on_frame_config(self, event):
     self.canvas.configure(scrollregion = self.canvas.bbox("all"))
@@ -335,7 +335,7 @@ class App(tk.Tk):
     track_frame_obj = self.track_frames[self.track_selection[0]]
     track_frame_obj.playing_state_set("toggle")
     if track_frame_obj.track.playing:
-      self.progress_pb.config(maximum = len(self.tracks[self.track_selection[0]]))
+      self.progress_pb.config(maximum = self.tracks[self.track_selection[0]].length)
       seek_time = self.tracks[self.selection[0]].trim[0]
       if self.player.time < seek_time: #Only set if it's below (otherwise, resume)
         if seek_time > 0: #This appears to be a bug with pyglet, where it will constantly reset set to 0 if 0
@@ -392,8 +392,8 @@ class App(tk.Tk):
           seek = 0.01
       elif change[1] > 0:
         seek = self.player.time + 5
-        if seek > len(track) - track.trim[1]:
-          seek = len(track) - track.trim[1]
+        if seek > track.length - track.trim[1]:
+          seek = track.length - track.trim[1]
       if change[1] != 0:
         self.player.seek(seek)
         self.progress_dvar.set(self.player.time)
@@ -431,7 +431,7 @@ class PlayThread(threading.Thread):
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
     self.parent.player.volume = self.track.volume / 100
-    condition = lambda:self.parent.progress_dvar.get() < 0.1 + (len(self.track) - self.track.trim[1])
+    condition = lambda:self.parent.progress_dvar.get() < 0.1 + (self.track.length - self.track.trim[1])
     if not condition():
 ##      print("Progress = {}".format(track_frame_obj.track.trim[0]))
       self.parent.progress_dvar.set(track_frame_obj.track.trim[0])
@@ -443,7 +443,7 @@ class PlayThread(threading.Thread):
         self.parent.destroy()
         return
 
-      start_fade = len(self.track) - self.track.trim[1] - self.track.fade
+      start_fade = self.track.length - self.track.trim[1] - self.track.fade
       if self.track.fade != 0 and self.parent.player.time >= start_fade:
         self.parent.player.volume = 100 * (1 - ((self.parent.player.time - start_fade) / self.track.fade)) #NOT WORKING
 ##        print(self.parent.player.volume)
@@ -493,12 +493,6 @@ class Track:
     self.fade = fade_time
     
     self.playing = False
-
-  def __len__(self):
-    """Objects of this class are NOT iterable. 'len' simply gets the length,
-    not the number of items stored in a certain variable as not such variable
-    exists in this class."""
-    return self.length
 
   def __repr__(self):
     """Simple string representation"""
@@ -554,7 +548,8 @@ class TrackFrame(tk.Frame):
     """Set the value of self.text to what it should be (based on the current
     state of self.track (if that is updated, this object is updated with this
     method)"""
-    self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "({}s, {}s)".format(*self.track.trim), to_minutes(len(self.track)), "{}%".format(self.track.volume), "{}s".format(self.track.fade))
+    print(int(self.track.length))
+    self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "({}s, {}s)".format(*self.track.trim), to_minutes(int(self.track.length)), "{}%".format(self.track.volume), "{}s".format(self.track.fade))
     for i in range(len(self.labels)):
       self.labels[i].config(text = self.text[i])
   
@@ -571,7 +566,7 @@ class TrackFrame(tk.Frame):
     if n == 2:
       valid = re.match(r"^\d+$", value) is not None and int(value) >= 0 and int(value) <= 100
     elif n == 3:
-      valid = is_float(value) and float_(value) <= (len(self.track) - (self.track.trim[0] + self.track.trim[1]))
+      valid = is_float(value) and float_(value) <= (self.track.length - (self.track.trim[0] + self.track.trim[1]))
     else:
       valid = is_float(value)
     if valid:
