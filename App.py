@@ -174,7 +174,6 @@ class App(tk.Tk):
     del effect_copy
     self.effects = effects
     self.tracks = [Track(track_list[i], audio_length(track_list[i]), i, *effects[track_list[i]]) for i in range(len(track_list))]
-    print(self.tracks)
     with open(FILE_PATH + r"\Config\Order.txt") as file:
       order = tuple(map(int, file.readlines()))
       order = [el for el in order if el < len(self.tracks)]
