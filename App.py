@@ -1,7 +1,14 @@
 """
 Bugs to fix:
   Play button resets when changing mode (but doesn't affect functionality)
-
+    Ensure that play button is not reset when doing this (explicitly exlude it)
+  .wav files inconsistent in playability
+    Incorrect file path (FileNotFoundError, os.chdir(FILE_PATH + r"\Tracks"))?
+    AVbin not consistenly installed on each program run?
+  Doesn't always save order when closing
+    A faulty condition - not saving in certain cases to avoid errors?
+    
+  
 
 Usage:
   Universal:
@@ -31,7 +38,6 @@ import random #Testing purposes
 import threading
 import time
 import os
-import soundfile
 import sys
 import json
 import re
@@ -41,7 +47,8 @@ NAMES_COMMANDS = (
   ("pyglet","python -m pip install pyglet"),
   ("soundfile","python -m pip install soundfile"),
   ("mutagen.mp3", "python -m pip install mutagen"),
-  ("eyed3", "python -m pip install python-magic & python -m pip install eyed3"))
+  ("eyed3", "python -m pip install python-magic-bin==0.4.14 & python -m pip install eyed3"),
+  ("soundfile", "python -m pip install soundfile"))
 
 PY_PATH = os.__file__[:-10] #Any library will do
 PATHS = os.environ["PATH"].split(";")
@@ -177,12 +184,14 @@ class App(tk.Tk):
         del effects[included] #If files have been removed, remove them
     del effect_copy
     self.effects = effects
-    self.tracks = [Track(track_list[i], audio_length(track_list[i]), i, *effects[track_list[i]]) for i in range(len(track_list))]
+    self.tracks = [Track(track_list[i], 0.5 + audio_length(track_list[i]), i, *effects[track_list[i]]) for i in range(len(track_list))]
     with open(FILE_PATH + r"\Config\Order.txt") as file:
       order = tuple(map(int, file.readlines()))
       order = [el for el in order if el < len(self.tracks)]
       if order == []:
         order = list(range(len(self.tracks)))
+      for i in range(len(self.tracks) - len(order)):
+        order.append(max(order) + 1)
       print("order = {}".format(order))
       print(self.tracks)
       self.tracks = [self.tracks[num] for num in order]
@@ -356,6 +365,8 @@ class App(tk.Tk):
     self.focus_set()
     
   def shift_pressed(self, event = None, increment = 1): #Increment mode
+    if self.tracks[self.selection[0]].playing:
+      return
     self.mode = (self.mode + increment) % 3
     self.mode_lbl.config(text = MODES[self.mode])
     if len(self.tracks) != 0:
@@ -433,13 +444,14 @@ class PlayThread(threading.Thread):
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
     self.parent.player.volume = self.track.volume / 100
-    condition = lambda:self.parent.progress_dvar.get() < 0.1 + (self.track.length - self.track.trim[1])
+    condition = lambda:(self.parent.player.time) < (self.track.length - self.track.trim[1])
     if not condition():
 ##      print("Progress = {}".format(track_frame_obj.track.trim[0]))
       self.parent.progress_dvar.set(track_frame_obj.track.trim[0])
     while condition():
       if not self.track.playing:
         self.parent.player.pause()
+        print("Pausing, track not playing")
         return
       if self.parent.end:
         self.parent.destroy()
@@ -452,8 +464,10 @@ class PlayThread(threading.Thread):
       else:
         self.parent.player.volume = self.track.volume / 100
       self.parent.update()
+      ##if self.parent.player.time < self.track.length:
       self.parent.progress_dvar.set(self.parent.player.time)
     #Run code below if ended by getting to the end
+    print("Exited")
     self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
     if self.track.loop:
       self.play()
