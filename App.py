@@ -450,7 +450,7 @@ class PlayThread(threading.Thread):
         self.parent.player.volume = (1 - ((self.parent.player.time - start_fade) / self.track.fade)) #NOT WORKING
 ##        print(self.parent.player.volume)
       else:
-        self.parent.player.volume = self.track.volume
+        self.parent.player.volume = self.track.volume / 100
       self.parent.update()
       self.parent.progress_dvar.set(self.parent.player.time)
     #Run code below if ended by getting to the end
