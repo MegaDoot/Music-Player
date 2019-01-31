@@ -1,4 +1,8 @@
 """
+Bugs to fix:
+  Play button resets when changing mode (but doesn't affect functionality)
+
+
 Usage:
   Universal:
     Shift to change mode
@@ -443,7 +447,7 @@ class PlayThread(threading.Thread):
 
       start_fade = self.track.length - self.track.trim[1] - self.track.fade
       if self.track.fade != 0 and self.parent.player.time >= start_fade:
-        self.parent.player.volume = 100 * (1 - ((self.parent.player.time - start_fade) / self.track.fade)) #NOT WORKING
+        self.parent.player.volume = (1 - ((self.parent.player.time - start_fade) / self.track.fade)) #NOT WORKING
 ##        print(self.parent.player.volume)
       else:
         self.parent.player.volume = self.track.volume
@@ -548,7 +552,7 @@ class TrackFrame(tk.Frame):
     method)"""
     print(int(self.track.length))
     self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "({}s, {}s)".format(*self.track.trim), to_minutes(int(self.track.length)), "{}%".format(self.track.volume), "{}s".format(self.track.fade))
-    for i in range(len(self.labels)):
+    for i in range(1, len(self.labels)):
       self.labels[i].config(text = self.text[i])
   
   def trace_trim(self, n):
