@@ -2,7 +2,7 @@
 Bugs to fix:
   Play button resets when changing mode (but doesn't affect functionality)
     Ensure that play button is not reset when doing this (explicitly exlude it)
-  Audio files inconsistent in playability
+  .wav files inconsistent in playability
     Incorrect file path (FileNotFoundError, os.chdir(FILE_PATH + r"\Tracks"))?
     AVbin not consistenly installed on each program run?
   Doesn't always save order when closing
@@ -277,7 +277,7 @@ class App(tk.Tk):
       return
     #Save order
     order = [track.num for track in self.tracks]
-    os.chdir(os.path.dirname(__file__) + r"\Config")
+    os.chdir(FILE_PATH + r"\Config")
     with open(r"Order.txt", "w") as file:
       for n in order:
         file.write(str(n) + "\n")
@@ -370,7 +370,13 @@ class App(tk.Tk):
     self.player.pause()
     del self.player
     self.player = pyglet.media.Player()
-    source = pyglet.media.load(repr(track_obj))
+    os.chdir(FILE_PATH + r"\Tracks")
+    try:
+      source = pyglet.media.load(repr(track_obj))
+    except:
+      print("Diagnostic:")
+      print("os.listdir() = {}\nrepr(track_obj) = {}, CWD = {}".format(os.listdir(), repr(track_obj), os.getcwd()))
+      sys.exit()
     self.player.queue(source)
     self.progress_dvar.set(track_obj.trim[0])
     self.focus_set()
@@ -398,6 +404,7 @@ class App(tk.Tk):
         new = edits[i]
         self.track_frames[edits[i]] = TrackFrame(self.song_frame, self.tracks[new])
         self.track_frames[edits[i]].grid(row = edits[i], column = 0)
+      self.save()
     for obj in self.track_frames:
       obj.highlight = []
     track_frame_obj = self.track_frames[self.selection[0]]
@@ -462,7 +469,6 @@ class PlayThread(threading.Thread):
     while condition():
       if not self.track.playing:
         self.parent.player.pause()
-        print("Pausing, track not playing")
         return
       if self.parent.end:
         self.parent.destroy()
@@ -475,8 +481,17 @@ class PlayThread(threading.Thread):
       else:
         self.parent.player.volume = self.track.volume / 100
       self.parent.update()
-      ##if self.parent.player.time < self.track.length:
-      self.parent.progress_dvar.set(self.parent.player.time)
+##      if self.parent.player.time < self.parent.progress_dvar.get() and self.parent.progress_dvar.get() > 1:
+      if self.parent.progress_dvar.get() >= self.track.length - self.track.trim[0]:
+        print("END")
+        break
+      if self.parent.progress_dvar.get() - self.parent.player.time > 1:
+        print("Backtracked")
+        break
+      else:
+        self.parent.progress_dvar.set(self.parent.player.time)
+##      else:
+##        print("Looks like it skipped back")
     #Run code below if ended by getting to the end
     print("Exited")
     self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
