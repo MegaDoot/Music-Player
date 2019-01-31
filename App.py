@@ -23,12 +23,12 @@ https://pythonhosted.org/pyglet/programming_guide/controlling_playback.html
 
 import tkinter as tk
 import tkinter.ttk as ttk
-import random #Testing
+import random #Testing purposes
 import threading
 import time
 import os
 import soundfile
-import sys #Testing
+import sys
 import json
 import re
 #Also import pyglet, sounfile, mutagen.mp3 and eyed3
@@ -323,7 +323,6 @@ class App(tk.Tk):
       return
 
     if self.track_selection != self.selection: #New item selected
-      print("new")
       self.player.pause()
       self.media_player(self.tracks[self.selection[0]])
       ##self.music_thread.set_track(self.tracks[self.selection[0]])
@@ -349,7 +348,6 @@ class App(tk.Tk):
     self.player = pyglet.media.Player()
     source = pyglet.media.load(repr(track_obj))
     self.player.queue(source)
-    print(track_obj.trim)
     self.progress_dvar.set(track_obj.trim[0])
     self.focus_set()
     
