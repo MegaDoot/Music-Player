@@ -2,13 +2,19 @@
 Bugs to fix:
   Play button resets when changing mode (but doesn't affect functionality)
     Ensure that play button is not reset when doing this (explicitly exlude it)
-  .wav files inconsistent in playability
+  Audio files inconsistent in playability
     Incorrect file path (FileNotFoundError, os.chdir(FILE_PATH + r"\Tracks"))?
     AVbin not consistenly installed on each program run?
   Doesn't always save order when closing
     A faulty condition - not saving in certain cases to avoid errors?
-    
-  
+
+
+TROUBLESHOOTING:
+  Are you using Python 32-bit?
+  Syntax errors: Use Python 3.5 or above
+  Error for 'libmagic not found'? python -m pip install python-magic-bin==0.4.14
+  Python not recognised: import a library and print it to find out the Python directory and add it to PATH variables
+  Error involving 'pyglet' and 'AVbin'?
 
 Usage:
   Universal:
@@ -61,7 +67,10 @@ for i in range(len(NAMES_COMMANDS)):
     exec("import " + NAMES_COMMANDS[i][0])
   except ImportError:
     os.system("echo {} not found; installing & {} & Pause".format(*NAMES_COMMANDS[i]))
-    exec("import " + NAMES_COMMANDS[i][0])
+    try:
+      exec("import " + NAMES_COMMANDS[i][0])
+    except:
+      print("ERROR: Could not import library '{}' (see top of code for troubleshooting)".format(NAMES_COMMANDS[i][0]))
 
 try:
   pyglet.lib.load_library("avbin")
@@ -272,6 +281,7 @@ class App(tk.Tk):
     with open(r"Order.txt", "w") as file:
       for n in order:
         file.write(str(n) + "\n")
+    print("Saved order as \n{}".format(order))
     
     #Save effects
     effects = {}
@@ -279,6 +289,7 @@ class App(tk.Tk):
       effects[str(track)] = track.compile_effects()
     with open("Effects.json", "w") as file:
       json.dump(effects, file)
+    print("Saved effects")
   
   def update_bar(self, *events):
     if len(self.tracks) == 0:
@@ -564,7 +575,6 @@ class TrackFrame(tk.Frame):
     """Set the value of self.text to what it should be (based on the current
     state of self.track (if that is updated, this object is updated with this
     method)"""
-    print(int(self.track.length))
     self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "({}s, {}s)".format(*self.track.trim), to_minutes(int(self.track.length)), "{}%".format(self.track.volume), "{}s".format(self.track.fade))
     for i in range(1, len(self.labels)):
       self.labels[i].config(text = self.text[i])
