@@ -87,6 +87,7 @@ Tutorials at:
   https://www.youtube.com/watch?v=zZbWX8Q2bsk""")
   input("\nPress any key to continue...")
   sys.exit()
+  self.destroy()
 
 FILE_PATH = os.path.dirname(__file__)
 ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time")
