@@ -301,13 +301,21 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       json.dump(effects, file) #Put 'effects' into 'Effects.json' as a dictionary
     print("Saved effects")
   
-  def update_bar(self, *events):
-    if len(self.tracks) == 0:
-      self.time_lbl.config(text = "")
-    else:
-      self.time_lbl.config(text = "{} / {}".format(to_minutes(self.progress_dvar.get()), to_minutes(self.tracks[self.track_selection[0]].length)))
+  def update_bar(self, *events): #Automatically adds extra arguments when called
+    """Usage of *map below: map applies 'to_minutes' to each one. The 'format'
+    method requires 2 arguments in this case, but 1 was given, an iterable of
+    length 2, so, by 'starring' it, it unpacks the map object into 2 arguments.
+    """
+    if len(self.tracks) == 0: #Dividing by zero never ends well
+      self.time_lbl.config(text = "00:00 / 00:00") #Default if there are no files
+    else: #Gets length, converts it to minutes and displays at the end
+      self.time_lbl.config(text = "{} / {}".format(*map(to_minutes, (self.progress_dvar.get(), self.tracks[self.track_selection[0]].length))))
   
   def on_frame_config(self, event):
+    print("Config")
+    """'bbox' is short for 'bounding box', so, by setting it to "all", it finds
+    everything that's in the canvas. Alternatively, this can be a tuple,
+    (n, e, s w). Called whenever """
     self.canvas.configure(scrollregion = self.canvas.bbox("all"))
   
   def enter_pressed(self, event):
@@ -388,6 +396,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       print("os.listdir() = {}\nrepr(track_obj) = {}, CWD = {}".format(os.listdir(), repr(track_obj), os.getcwd()))
       sys.exit()
     self.player.queue(source)
+    print(track_obj.trim[0])
     self.progress_dvar.set(track_obj.trim[0])
     self.focus_set()
     
