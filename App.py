@@ -41,19 +41,19 @@ https://pythonhosted.org/pyglet/programming_guide/controlling_playback.html
 import tkinter as tk
 import tkinter.ttk as ttk
 import random #Testing purposes
-import threading
-import time
-import os
-import sys
-import json
-import re
+import threading #For running more than one process at one time
+import time #Pause certain amounts of time
+import os #File management
+import sys #Command line arguments and exiting process
+import json #Loads/ dumps JSON files/dictionaries, interchangeable with (c)pickle
+import re #Regular expressions for checking validity of information entered
 #Also import pyglet, sounfile, mutagen.mp3 and eyed3
 
 NAMES_COMMANDS = (
   ("pyglet","python -m pip install pyglet"), #Note that '-m' means module
-  ("soundfile","python -m pip install soundfile"),
-  ("mutagen.mp3", "python -m pip install mutagen"),
-  ("eyed3", "python -m pip install python-magic-bin==0.4.14 & python -m pip install eyed3"), #libmagic is a dependency of eyed3
+  ("soundfile","python -m pip install soundfile"), #For using metadata to find length of file
+  ("mutagen.mp3", "python -m pip install mutagen"), #Find length of .mp3 if metadata not available/erroneous/wrong format
+  ("eyed3", "python -m pip install python-magic-bin==0.4.14 & python -m pip install eyed3"), #libmagic needed for eyed3, for .wav
   ("soundfile", "python -m pip install soundfile"))
 
 PY_PATH = os.__file__[:-10] #Any library will do
@@ -318,87 +318,92 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     (n, e, s w). Called whenever """
     self.canvas.configure(scrollregion = self.canvas.bbox("all"))
   
-  def enter_pressed(self, event):
-    track_frame = self.track_frames[self.selection[0]]
-    if not self.entry_present or self.mode != 2:
-      return
+  def enter_pressed(self, event): #Called when enter pressed, 'event' gives details, i.e. widget focus
+    track_frame = self.track_frames[self.selection[0]] #Set to current highlighted track
+    if not self.entry_present or self.mode != 2: #If no text entries on screen or not in edit mode
+      return #Stop this procedure from doing anything else
     if self.selection[1] == 3: #If trim selected
       if event.widget == track_frame.stat_entries[0] and track_frame.trace_trim(0): #If correct widget focus and valid input
-        track_frame.stat_entries[1].focus_set()
-      elif event.widget == track_frame.stat_entries[1] and track_frame.trace_trim(1):
-        self.tracks[self.selection[0]].trim = [float_(track_frame.stat_entries[i].get()) for i in range(2)]
-        track_frame.update_text()
-        track_frame.trim_frame.grid_remove()
-        track_frame.grid_widget(3)
-        self.entry_present = False
+        track_frame.stat_entries[1].focus_set() #Put cursor on widget (doesn't have to be clicked)
+      elif event.widget == track_frame.stat_entries[1] and track_frame.trace_trim(1): #If selected second (last) entry and valid input
+        self.tracks[self.selection[0]].trim = [float_(track_frame.stat_entries[i].get()) for i in range(2)] #Set values to values typed
+        track_frame.update_text() #Frame shows correct text
+        track_frame.trim_frame.grid_remove() #Get rid of text boxes...
+        track_frame.grid_widget(3) #...and replace them with correct label displaying text
+        self.entry_present = False #As there are now no entries on screen
     elif self.selection[1] in (5, 6) and track_frame.trace_trim(2) and track_frame.trace_trim(3): #Volume or fade
-      if self.selection[1] == 5:
-        self.tracks[self.selection[0]].volume = int(track_frame.stat_entries[2].get())
-      else:
-        self.tracks[self.selection[0]].fade = float_(track_frame.stat_entries[3].get())
-      track_frame.update_text()
-      track_frame.grid_widget(self.selection[1])
-      self.entry_present = False
+      if self.selection[1] == 5: #If volume
+        self.tracks[self.selection[0]].volume = int(track_frame.stat_entries[2].get()) #Set value
+      else: #elif self.selection[1] == 6, but 'else' by process of elimination
+        self.tracks[self.selection[0]].fade = float_(track_frame.stat_entries[3].get()) #'float_' also accepts '.'
+      track_frame.update_text() #Text updates to be accurate to variables it represents
+      track_frame.grid_widget(self.selection[1]) #Place down widget no. 5 or 6
+      self.entry_present = False #Entries are no longer present, allowing other procedures to run
 
   def space_pressed(self, event):
-    if self.entry_present:
-      return
-    if self.mode == 2 and not self.entry_present: #Edit
-      track_frame = self.track_frames[self.selection[0]]
-      if self.selection[1] == 1: #Loop
-        track_frame.track.loop = not track_frame.track.loop
-      elif self.selection[1] == 3: #Trim
-        track_frame.labels[3].grid_remove()
-        track_frame.trim_frame.grid(row = 0, column = 3, sticky = "NESW")
-        track_frame.stat_entries[0].focus_set()
-        self.entry_present = True
-      elif self.selection[1] in (5, 6):
-        track_frame.labels[self.selection[1]].grid_remove()
-        track_frame.unique_frames[self.selection[1] - 5].grid(row = 0, column = self.selection[1], sticky = "NESW")
-        track_frame.stat_entries[self.selection[1] - 3].focus_set()
-        self.entry_present = True
-      self.track_frames[self.selection[0]].update_text()
+    if self.entry_present: #Don't do anything if currently typing
+      return #Stop any further code from running in this procedure
+    if self.mode == 2: #Edit mode
+      track_frame = self.track_frames[self.selection[0]] #Pointer with a shorter name so any changes are between both
+      if self.selection[1] == 1: #Loop mode
+        track_frame.track.loop = not track_frame.track.loop #Toggle - when pressed, toggle between
+      elif self.selection[1] == 3: #Trim mode
+        track_frame.labels[3].grid_remove() #Remove to add text entries instead
+        track_frame.trim_frame.grid(row = 0, column = 3, sticky = "NESW") #Place down and fill entire allocated row and column
+        track_frame.stat_entries[0].focus_set() #Place cursor
+        self.entry_present = True #So it performs normally afterwards
+      elif self.selection[1] in (5, 6): #If volume or fade time
+        track_frame.labels[self.selection[1]].grid_remove() #Remove selected label
+        track_frame.unique_frames[self.selection[1] - 5].grid(row = 0, column = self.selection[1], sticky = "NESW") #Uniqe: one text entry
+        track_frame.stat_entries[self.selection[1] - 3].focus_set() #Set focus to current entry
+        self.entry_present = True #I've explained what this does enough ties
+      self.track_frames[self.selection[0]].update_text() #I've explained this one enough too
       return #Only play if order or select
 
     if self.mode == 1: #Order, save
-      self.save()
-      return
+      self.save() #When changed, save state (so that closing incorrectly will still save)
+      return #Nothing else required
 
     if self.track_selection != self.selection: #New item selected
-      self.player.pause()
-      self.media_player(self.tracks[self.selection[0]])
+      self.player.pause() #Will stop previous track (would continue even if deleted)
+      self.media_player(self.tracks[self.selection[0]]) #Reassign and reset everything
       ##self.music_thread.set_track(self.tracks[self.selection[0]])
-      for i in range(len(self.track_frames)):
-        self.track_frames[i].playing_state_set(False)
-      self.progress_dvar.set(0)
-    self.track_selection = self.selection[:]
-    self.update_bar()
-    track_frame_obj = self.track_frames[self.track_selection[0]]
-    track_frame_obj.playing_state_set("toggle")
-    if track_frame_obj.track.playing:
-      self.progress_pb.config(maximum = self.tracks[self.track_selection[0]].length)
-      seek_time = self.tracks[self.selection[0]].trim[0]
+      for i in range(len(self.track_frames)): #Iterate throught number of tracks
+        self.track_frames[i].playing_state_set(False) #Stop each track from playing
+      self.progress_dvar.set(0) #Reset progress
+
+    self.track_selection = self.selection[:] #[:] stops track_selection from being a pointer to
+    self.update_bar() #Set it to 0 seconds in
+    track_frame_obj = self.track_frames[self.track_selection[0]] #Concise pointer for easier access
+    track_frame_obj.playing_state_set("toggle") #Toggle sets it to the oppsite of current value
+    if track_frame_obj.track.playing: #If a song is currently playing
+      self.progress_pb.config(maximum = self.tracks[self.track_selection[0]].length) #Set maximum value to length of selected song
+      seek_time = self.tracks[self.selection[0]].trim[0] #Start track at first trim value
       if self.player.time < seek_time: #Only set if it's below (otherwise, resume)
         if seek_time > 0: #This appears to be a bug with pyglet, where it will constantly reset set to 0 if 0
           print("trim[0] = {}".format(seek_time))
-          self.player.seek(seek_time)
-      self.play_thread.play()
+          self.player.seek(seek_time) #Set time to seek_time
+      self.play_thread.play() #Play track
   
   def media_player(self, track_obj):
-    self.player.pause()
-    del self.player
-    self.player = pyglet.media.Player()
-    os.chdir(FILE_PATH + r"\Tracks")
-    try:
-      source = pyglet.media.load(repr(track_obj))
-    except:
+    """Resets self.player as it uses a queue that cannot be reversed or
+    backtracked after reaching the end, so it is necessary to use just one
+    track in the queue and delete it and reset it once the end is reached."""
+    self.player.pause() #Stop current track as it will continue even if it has been deleted
+    del self.player #Remove it from memory
+    self.player = pyglet.media.Player() #Reset it to a new player object
+    os.chdir(FILE_PATH + r"\Tracks") #Go to 'Tracks' folder in current working directory
+    try: #Attempt - can cause errors (the cause of which is unknown to me)
+      source = pyglet.media.load(repr(track_obj)) #Load name of track object
+    except Exception as error: #No specific error, 'error' saved to record type
       print("Diagnostic:")
-      print("os.listdir() = {}\nrepr(track_obj) = {}, CWD = {}".format(os.listdir(), repr(track_obj), os.getcwd()))
-      sys.exit()
-    self.player.queue(source)
+      print("Error type = '{}'".format(type(error))) #Tyoe of exception raised
+      print("os.listdir() = {}\nrepr(track_obj) = {}, CWD = {}".format(os.listdir(), repr(track_obj), os.getcwd())) #General diagnostic
+      sys.exit() #Stop program from running
+    self.player.queue(source) #Add track to queue
     print(track_obj.trim[0])
-    self.progress_dvar.set(track_obj.trim[0])
-    self.focus_set()
+    self.progress_dvar.set(track_obj.trim[0]) #Reset track to first trim value
+    self.focus_set() #Set focus to root window
     
   def shift_pressed(self, event = None, increment = 1): #Increment mode
     if self.tracks[self.selection[0]].playing:
