@@ -78,9 +78,12 @@ try:
   pyglet.lib.load_library("avbin") #Finds AVbin without having to open a compressed audio file
   print("Success: Found AVbin")
 except ImportError:
-  print(r"""Go to https://www.mediafire.com/file/64vjttya35alh7k/avbin.rar and download the file.
+  print(r"""Either:
+  Go to https://www.mediafire.com/file/64vjttya35alh7k/avbin.rar and download the file.
 
-Put avbin.dll into 'C:\Windows\System'.
+  Put avbin.dll into 'C:\Windows\System'.
+Or:
+  Download avbin.dll from the Music-Player repo at 'https://github.com/MegaDoot/Music-Player/edit/master'
 Note that you cannot install this with pip.
 It is required for 'pyglet' to handle compressed files.
 
