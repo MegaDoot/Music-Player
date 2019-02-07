@@ -1,4 +1,6 @@
 """
+431
+
 Bugs to fix:
   Play button resets when changing mode (but doesn't affect functionality)
     Ensure that play button is not reset when doing this (explicitly exlude it)
@@ -406,67 +408,68 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     self.focus_set() #Set focus to root window
     
   def shift_pressed(self, event = None, increment = 1): #Increment mode
-    if self.tracks[self.selection[0]].playing:
-      return
-    self.mode = (self.mode + increment) % 3
-    self.mode_lbl.config(text = MODES[self.mode])
-    if len(self.tracks) != 0:
-      self.change_selection(lambda column:(0, 0))
+    if self.tracks[self.selection[0]].playing: #Don't change mode if track is currently playing (subject to change)
+      return #Stop any further code from running (stops mode from changing)
+    self.mode = (self.mode + increment) % 3 #If above 3 or below 0, loop back so it doesn't raise an IndexError
+    self.mode_lbl.config(text = MODES[self.mode]) #Set label to display name of mode number from a list of names
+    if len(self.tracks) != 0: #If list of tracks is not empty
+      self.change_selection(lambda column:(0, 0)) #
 
   def change_selection(self, change):
-    if self.entry_present:
-      return
-    change = change(self.selection[1])
-    self.selection =  [(self.selection[i] + change[i]) % self.modulo[i] for i in range(2)]
+    if self.entry_present: #If textboxes present on screen, don't allow mode change
+      return #Stop this procedure from running
+    change = change(self.selection[1]) #For easier usage, sets change to correct value (should this be skipped)
+    self.selection =  [(self.selection[i] + change[i]) % self.modulo[i] for i in range(2)] #Change selection by given value
 
-    if self.mode == 1: #If order
-      pos = self.selection[0]
-      edits = (pos, (pos - change[0]) % len(self.tracks))
-      self.tracks[edits[0]], self.tracks[edits[1]] = self.tracks[edits[1]], self.tracks[edits[0]]
-      for i in range(2):
-        self.track_frames[edits[i]].destroy()
-        new = edits[i]
-        self.track_frames[edits[i]] = TrackFrame(self.song_frame, self.tracks[new])
-        self.track_frames[edits[i]].grid(row = edits[i], column = 0)
-      self.save()
-    for obj in self.track_frames:
-      obj.highlight = []
-    track_frame_obj = self.track_frames[self.selection[0]]
-    if self.mode == 2: #Edit mode
-      track_frame_obj.highlight = [self.selection[1]]
+    if self.mode == 1: #If order mode
+      pos = self.selection[0] #Currently selected track
+      edits = (pos, (pos - change[0]) % len(self.tracks)) #Currently selected and new selected (what should be switched)
+      self.tracks[edits[0]], self.tracks[edits[1]] = self.tracks[edits[1]], self.tracks[edits[0]] #Switch these two tracks
+      for i in range(2): #Iterate through each 2 elements of edit
+        self.track_frames[edits[i]].destroy() #Remove this frame from the grid manager permentantly
+        new = edits[i] #Easier acess and more efficient
+        self.track_frames[edits[i]] = TrackFrame(self.song_frame, self.tracks[new]) #Make new frame to replace old one as tracks are switched
+        self.track_frames[edits[i]].grid(row = edits[i], column = 0) #Add new frame to grid in correct place
+      self.save() #After each action, save state
+    for obj in self.track_frames: #Go through each track frame
+      obj.highlight = [] #Remove highlight from each widget
+    track_frame_obj = self.track_frames[self.selection[0]] #For more concise and efficient access later
+    if self.mode == 2: #If edit mode
+      track_frame_obj.highlight = [self.selection[1]] #Set highlighted stat to highighted
     else: #Select or order mode
-      track_frame_obj.highlight = range(len(COLUMN_WIDTHS))
-      self.selection[1] = 1
+      track_frame_obj.highlight = range(len(COLUMN_WIDTHS)) #Set highlight to all stats in row (highlight whole row)
+      self.selection[1] = 1 #Reset stat selection (so not preserved when goes back to edit mode)
 
-      track = self.tracks[self.selection[0]]
-      if change[1] < 0:
-        seek = self.player.time - 5
-        if seek < track.trim[0]:
-          seek = track.trim[0]
-        if seek == 0:
-          seek = 0.01
-      elif change[1] > 0:
-        seek = self.player.time + 5
-        if seek > track.length - track.trim[1]:
-          seek = track.length - track.trim[1]
-      if change[1] != 0:
-        self.player.seek(seek)
-        self.progress_dvar.set(self.player.time)
-        self.update_bar()
+      track = self.tracks[self.selection[0]] #Juance again, for easier access, readability, 'dryness' and efficiency
+      if change[1] < 0: #If left pressed/goes backwards (serves purpose of changing stat selection and time within track)
+        seek = self.player.time - 5 #5 backwards seconds
+        if seek < track.trim[0]: #If it goes back too far (before it should)
+          seek = track.trim[0] #Set it to earliest possible point (start of song)
+        if seek == 0: #Bug with Pyglet where seeking to 0 causes constant juttering and not playing, just looping first part
+          seek = 0.01 #Set to imperceptible time after start and 0.01 seems appropriate
+      elif change[1] > 0: #If right arrow pressed, goes forward/right
+        seek = self.player.time + 5 #Forward 5 seconds into the track
+        if seek > track.length - track.trim[1]: #If number exceeds ending point of song
+          seek = track.length - track.trim[1] #Set to latest possible point in the song
+      if change[1] != 0: #If either check for greater or less than 0 correct
+        self.player.seek(seek) #Set current time to time calculated to seek to
+        self.progress_dvar.set(self.player.time) #Update progress variable to display correct time
+        self.update_bar() #Update progress bar to display correct length
 
-    bottom = int(self.scrollbar.get()[1] * len(self.track_frames))
-    if not self.selection[0] in range(bottom - 5, bottom):
-      self.canvas.yview("moveto", (self.selection[0] / len(self.track_frames)))
+    bottom = int(self.scrollbar.get()[1] * len(self.track_frames)) #Track at the bottom currently visible tracks
+    if not self.selection[0] in range(bottom - 5, bottom): #If selected track is not on screen
+      self.canvas.yview("moveto", (self.selection[0] / len(self.track_frames))) #Move the canvas so that is the case
 
   def end(self):
-    self.player.pause()
-    self.save()
+    """Calls when root window closes"""
+    self.player.pause() #Stop track from playing
+    self.save() #Save current state
     if len(self.tracks) != 0 and self.tracks[self.selection[0]].playing:
       print("Running")
-      self.end = True
+      self.end = True #Check in while loop in thread recognises this and stops safely
     else:
       print("Not running")
-      if hasattr(self, "play_thread"):
+      if hasattr(self, "play_thread"): #If 'play_thread' is initialised
         self.play_thread.parent.destroy()
       else:
         self.destroy()
