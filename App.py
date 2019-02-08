@@ -620,7 +620,7 @@ class TrackFrame(tk.Frame):
     """Set the value of self.text to what it should be (based on the current
     state of self.track (if that is updated, this object is updated with this
     method)"""
-    self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "({}s, {}s)".format(*self.track.trim), to_minutes(int(self.track.length)), "{}%".format(self.track.volume), "{}s".format(self.track.fade))
+    self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "{}s, {}s".format(*self.track.trim), to_minutes(int(self.track.length)), "{}%".format(self.track.volume), "{}s, {}s".format(*self.track.fade))
     for i in range(1, len(self.labels)):
       self.labels[i].config(text = self.text[i])
   
