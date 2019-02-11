@@ -46,7 +46,7 @@ import random #Testing purposes
 import threading #For running more than one process at one time
 import time #Pause certain amounts of time
 import os #File management
-import sys #Command line arguments and exiting process
+import sys #Command line arguments and exiting process and __file__ in .exe
 import json #Loads/ dumps JSON files/dictionaries, interchangeable with (c)pickle
 import re #Regular expressions for checking validity of information entered
 #Also import pyglet, sounfile, mutagen.mp3 and eyed3
@@ -58,7 +58,7 @@ NAMES_COMMANDS = (
   ("eyed3", "python -m pip install python-magic-bin==0.4.14 & python -m pip install eyed3"), #libmagic needed for eyed3, for .wav
   ("soundfile", "python -m pip install soundfile"))
 
-PY_PATH = os.__file__[:-10] #Any library will do
+PY_PATH = os.__file__[:-10] #Any library will work for this
 PATHS = os.environ["PATH"].split(";") #PATH is separated by semicolons - produces a list containing each path
 if not PY_PATH in PATHS: #Must be in paths to be used on the command line
   os.environ["PATH"] += PY_PATH + ";" #Add Python to path (temporarily)
@@ -93,7 +93,12 @@ Tutorials at:
   input("\nPress any key to continue...") #Stops the command line from closing immediately (useless in IDE's, though)
   sys.exit() #Stops the program without having to close the shell (for IDLE)
 
-FILE_PATH = os.path.dirname(__file__) #Location of this file
+if getattr(sys, "frozen", False): #If executable
+  print("Running as executable")
+  FILE_PATH = os.path.dirname(sys.executable)
+else:
+  print("Running as python file")
+  FILE_PATH = os.path.dirname(os.path.realpath(__file__)) #Location of this file
 ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time") #Names of each attribute
 MODES = ("Select", "Order", "Edit") #Names of modes (note that these can be changed without having to change any other code)
 HL_BG = "#4c4c4c" #Colour for when highlighted
