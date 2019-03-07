@@ -56,7 +56,7 @@ NAMES_COMMANDS = (
   ("soundfile","python -m pip install soundfile"), #For using metadata to find length of file
   ("mutagen.mp3", "python -m pip install mutagen"), #Find length of .mp3 if metadata not available/erroneous/wrong format
   ("eyed3", "python -m pip install python-magic-bin==0.4.14 & python -m pip install eyed3"), #libmagic needed for eyed3, for .wav
-  ("soundfile", "python -m pip install soundfile"))
+)
 
 PY_PATH = os.__file__[:-10] #Any library will work for this
 PATHS = os.environ["PATH"].split(";") #PATH is separated by semicolons - produces a list containing each path
@@ -657,9 +657,11 @@ class TrackFrame(tk.Frame):
   
   @highlight.setter
   def highlight(self, value):
-    self._highlight = value
-    for i in range(len(self.labels)):
-      self.labels[i].config(bg = (HL_BG if i in self.highlight else style()["bg"]))
+    """When the highlight changes, set the highlighted song to be whatever the
+    selection is"""
+    self._highlight = value #Assign highlight property to the value given
+    for i in range(len(self.labels)): #Iterate i throught the number of tracks
+      self.labels[i].config(bg = (HL_BG if i in self.highlight else style()["bg"])) #Set to default if not selected
   
   def playing_state_set(self, value):
     if value == "toggle":
