@@ -1,6 +1,5 @@
 """
 431
-
 Bugs to fix:
   Play button resets when changing mode (but doesn't affect functionality)
     Ensure that play button is not reset when doing this (explicitly exlude it)
@@ -9,24 +8,19 @@ Bugs to fix:
     AVbin not consistenly installed on each program run?
   Doesn't always save order when closing
     A faulty condition - not saving in certain cases to avoid errors?
-
-
 TROUBLESHOOTING:
   Are you using Python 32-bit?
   Syntax errors: Use Python 3.5 or above
   Error for 'libmagic not found'? python -m pip install python-magic-bin==0.4.14
   Python not recognised: import a library and print it to find out the Python directory and add it to PATH variables
   Error involving 'pyglet' and 'AVbin'?
-
 Usage:
   Universal:
     Shift to change mode
-
   Select:
     Up and down buttons to change selected track
     Left and right to go backwards/forwards 5 seconds
     Space to play track
-
   Order:
     Up and down buttons to move selected track up and down
     Left and right to go backwards/forwards 5 seconds
@@ -36,7 +30,6 @@ Usage:
     Left and right to change selected attribute
     Space to edit stat/effect
     Enter to go to next entry/text box and confirm input
-
 https://pythonhosted.org/pyglet/programming_guide/controlling_playback.html
 """
 
@@ -80,13 +73,11 @@ try:
 except ImportError:
   print(r"""Either:
   Go to https://www.mediafire.com/file/64vjttya35alh7k/avbin.rar and download the file.
-
   Put avbin.dll into 'C:\Windows\System'.
 Or:
   Download avbin.dll from the Music-Player repo at 'https://github.com/MegaDoot/Music-Player/edit/master'
 Note that you cannot install this with pip.
 It is required for 'pyglet' to handle compressed files.
-
 Tutorials at:
   https://www.youtube.com/watch?v=dQw4w9WgXcQ
   https://www.youtube.com/watch?v=zZbWX8Q2bsk""")
