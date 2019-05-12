@@ -1,5 +1,6 @@
-"""
+r"""
 431
+
 Bugs to fix:
   Play button resets when changing mode (but doesn't affect functionality)
     Ensure that play button is not reset when doing this (explicitly exlude it)
@@ -8,19 +9,24 @@ Bugs to fix:
     AVbin not consistenly installed on each program run?
   Doesn't always save order when closing
     A faulty condition - not saving in certain cases to avoid errors?
+
+
 TROUBLESHOOTING:
   Are you using Python 32-bit?
   Syntax errors: Use Python 3.5 or above
   Error for 'libmagic not found'? python -m pip install python-magic-bin==0.4.14
   Python not recognised: import a library and print it to find out the Python directory and add it to PATH variables
   Error involving 'pyglet' and 'AVbin'?
+
 Usage:
   Universal:
     Shift to change mode
+
   Select:
     Up and down buttons to change selected track
     Left and right to go backwards/forwards 5 seconds
     Space to play track
+
   Order:
     Up and down buttons to move selected track up and down
     Left and right to go backwards/forwards 5 seconds
@@ -30,6 +36,7 @@ Usage:
     Left and right to change selected attribute
     Space to edit stat/effect
     Enter to go to next entry/text box and confirm input
+
 https://pythonhosted.org/pyglet/programming_guide/controlling_playback.html
 """
 
@@ -39,10 +46,18 @@ import random #Testing purposes
 import threading #For running more than one process at one time
 import time #Pause certain amounts of time
 import os #File management
-import sys #Command line arguments and exiting process and __file__ in .exe
-import json #Loads/ dumps JSON files/dictionaries, interchangeable with (c)pickle
+import sys #Command line arguments and exiting process
+import json #Loads/ dumps JSON files/dictionaries
 import re #Regular expressions for checking validity of information entered
-#Also import pyglet, sounfile, mutagen.mp3 and eyed3
+import turtle #Draws fade graph
+#Also import pyglet, soundfile, mutagen.mp3 and eyed3
+
+if getattr(sys, "frozen", False): #If executable
+  print("Running as executable")
+  FILE_PATH = os.path.dirname(sys.executable)
+else:
+  print("Running as python file")
+  FILE_PATH = os.path.dirname(os.path.realpath(__file__)) #Location of this file
 
 NAMES_COMMANDS = (
   ("pyglet","python -m pip install pyglet"), #Note that '-m' means module
@@ -51,45 +66,31 @@ NAMES_COMMANDS = (
   ("eyed3", "python -m pip install python-magic-bin==0.4.14 & python -m pip install eyed3"), #libmagic needed for eyed3, for .wav
 )
 
-PY_PATH = os.__file__[:-10] #Any library will work for this
+PY_PATH = os.path.dirname(sys.executable) #Any library will do
 PATHS = os.environ["PATH"].split(";") #PATH is separated by semicolons - produces a list containing each path
-if not PY_PATH in PATHS: #Must be in paths to be used on the command line
-  os.environ["PATH"] += PY_PATH + ";" #Add Python to path (temporarily)
-  print("Added python to PATH")
-##os.system("python -m pip install python_magic_bin-0.4.14-py2.py3-none-win32.whl")
+FFMPEG_PATH = FILE_PATH + r"\ffmpeg\ffmpeg-20190511-68bac50-win32-static\bin"
+
+def add_path(path):
+  if not path in PATHS: #Must be in paths to be used on the command line
+    os.environ["PATH"] += ";" + path #Add to path (temporarily)
+
+add_path(PY_PATH)
+add_path(FFMPEG_PATH)
+print(os.environ["PATH"])
+
+def imp(name):
+  globals()[name] = __import__(name)
+
 for i in range(len(NAMES_COMMANDS)):
   try:
-    exec("import " + NAMES_COMMANDS[i][0]) #Import the first string in the selected tuple
+    imp(NAMES_COMMANDS[i][0]) #Import the first string in the selected tuple
   except ImportError:
     os.system("echo {} not found; installing & {} & Pause".format(*NAMES_COMMANDS[i])) #Install it on the command line
     try: #Not guarunteed to wirj
-      exec("import " + NAMES_COMMANDS[i][0])
+      imp(NAMES_COMMANDS[i][0])
     except: #Note that errors raised by os.system are not caught (hence the exception that encompasses all)
       print("ERROR: Could not import library '{}' (see top of code for troubleshooting)".format(NAMES_COMMANDS[i][0]))
 
-try:
-  pyglet.lib.load_library("avbin") #Finds AVbin without having to open a compressed audio file
-  print("Success: Found AVbin")
-except ImportError:
-  print(r"""Either:
-  Go to https://www.mediafire.com/file/64vjttya35alh7k/avbin.rar and download the file.
-  Put avbin.dll into 'C:\Windows\System'.
-Or:
-  Download avbin.dll from the Music-Player repo at 'https://github.com/MegaDoot/Music-Player/edit/master'
-Note that you cannot install this with pip.
-It is required for 'pyglet' to handle compressed files.
-Tutorials at:
-  https://www.youtube.com/watch?v=dQw4w9WgXcQ
-  https://www.youtube.com/watch?v=zZbWX8Q2bsk""")
-  input("\nPress any key to continue...") #Stops the command line from closing immediately (useless in IDE's, though)
-  sys.exit() #Stops the program without having to close the shell (for IDLE)
-
-if getattr(sys, "frozen", False): #If executable
-  print("Running as executable")
-  FILE_PATH = os.path.dirname(sys.executable)
-else:
-  print("Running as python file")
-  FILE_PATH = os.path.dirname(os.path.realpath(__file__)) #Location of this file
 ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time") #Names of each attribute
 MODES = ("Select", "Order", "Edit") #Names of modes (note that these can be changed without having to change any other code)
 HL_BG = "#4c4c4c" #Colour for when highlighted
@@ -105,7 +106,7 @@ KEY_MOVE = {
 
 CUTOFF_LENGTH = 35 #How long a name can be before it is cut off and ended with and ellipsis
 COLUMN_WIDTHS = (80, 80, 420, 130, 130, 130, 130) #How much space is allocated to each widget
-DEFAULT_PARAMS = (False, (0.0, 0.0), 100, 0.0) #When Config.json is missing the file (i.e. new file added), use these arguments
+DEFAULT_PARAMS = (False, (0.0, 0.0), 100, (0.5, 0.0)) #When Config.json is missing the file (i.e. new file added), use these arguments
 
 def audio_length(file_name):
   try:
@@ -156,7 +157,7 @@ def grid_config(frame): #Set each column to constant width in accordance with CO
     #This only sets the minimum size. Do grid_propagate(False) to make it always that width
 
 def entry_frame_config(frame, columns = 1): #Set each column to constant width (for trime, where there are 2 entries in one frame)
-  frame.grid_propagate(True)
+  frame.grid_propagate(False)
   frame.grid_rowconfigure(0, weight = 1)
   for i in range(columns):
     frame.grid_columnconfigure(i, weight = 1)
@@ -180,7 +181,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
 
     ttk_style = ttk.Style() #Style for ttk widgets
     ttk_style.theme_use("default") #Default for your OS (tkinter works for Windows, Mac and Linux)
-    ttk_style.configure("TProgressbar", thickness = 5) #Customise how thick the progress bar is
+    ttk_style.configure("TProgressbar", thickness = 5, background = "#f40000") #Customise how thick the progress bar is
 
     effects = json.loads(open(FILE_PATH + r"\Config\Effects.json", "r").read()) #r"" means string where there are no escape sequences
     #Loads this file into a dictionary equivalent
@@ -188,7 +189,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     os.chdir(FILE_PATH + r"\Tracks") #Set CWD to 'Tracks'
     track_list = os.listdir() #List of all files in the folder 'Tracks'
 
-    for file in track_list: 
+    for file in track_list:
       if file not in effects.keys():
         effects[file] = list(DEFAULT_PARAMS) #If new files added, make new set of default stats
     effect_copy = list(effects.keys()) #If it uses effects.keys(), there will be an IndexError as the length of it will decrease if anything is deleted
@@ -254,7 +255,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     self.canvas.grid(row = 2, column = 0, pady = 10) #Add 10 units of spacing
     self.canvas.create_window((0, 0), window = self.song_frame, anchor = "n") #In the top-left corner (hence (0, 0))
     #This is placed down on the canvas so that when the scrollbar (which is bound to all children of self.canvas) moves, this frame moves
-    self.scrollbar.grid(row = 2, column = 1, sticky = "NSW") #The 'NS' stretches it out up and down instead of being small
+    self.scrollbar.grid(row = 2, column = 1, sticky = "NSE") #The 'NS' stretches it out up and down instead of being small
 
     self.song_frame.bind("<Configure>", self.on_frame_config) #Whenever a widget changes this frame's confiuration, calls the method
     self.bind("<Shift_L>", self.shift_pressed) #Note that there is no binding that encompasses both shifts
@@ -292,7 +293,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     with open("Order.txt", "w") as file: #Automatically closes after dedentation
       for n in order:
         file.write(str(n) + "\n") #Easier to read if each one is a newline and allows for numbers with > 1 digits
-    print("Saved order as \n{}".format(order))
+    print("Saved order")# as \n{}".format(order))
     
     #Save effects
     effects = {}
@@ -301,6 +302,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     with open("Effects.json", "w") as file: #Closes 'file' when finished
       json.dump(effects, file) #Put 'effects' into 'Effects.json' as a dictionary
     print("Saved effects")
+    print(effects)
   
   def update_bar(self, *events): #Automatically adds extra arguments when called
     """Usage of *map below: map applies 'to_minutes' to each one. The 'format'
@@ -323,20 +325,31 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     track_frame = self.track_frames[self.selection[0]] #Set to current highlighted track
     if not self.entry_present or self.mode != 2: #If no text entries on screen or not in edit mode
       return #Stop this procedure from doing anything else
-    if self.selection[1] == 3: #If trim selected
-      if event.widget == track_frame.stat_entries[0] and track_frame.trace_trim(0): #If correct widget focus and valid input
-        track_frame.stat_entries[1].focus_set() #Put cursor on widget (doesn't have to be clicked)
-      elif event.widget == track_frame.stat_entries[1] and track_frame.trace_trim(1): #If selected second (last) entry and valid input
-        self.tracks[self.selection[0]].trim = [float_(track_frame.stat_entries[i].get()) for i in range(2)] #Set values to values typed
+    sel = self.selection[1]
+    if sel in (3, 6): #If trim selected
+      index = (3, 6).index(sel)
+      selected_entry = None
+      if event.widget in track_frame.stat_entries:
+        selected_entry = track_frame.stat_entries.index(event.widget)
+      if selected_entry in (0, 3) and track_frame.trace_trim(0): #If correct widget focus and valid input
+        track_frame.stat_entries[selected_entry + 1].focus_set() #Put cursor on widget (doesn't have to be clicked)
+      elif selected_entry in (1, 4) and track_frame.trace_trim(1): #If selected second (last) entry and valid input
+        assign = [float_(track_frame.stat_entries[i].get()) for i in range(selected_entry - 1, selected_entry + 1)]
+        if sel == 3:
+          self.tracks[self.selection[0]].trim = assign #Set values to values typed
+        elif sel == 6:
+          self.tracks[self.selection[0]].fade = assign
+          print(assign)
+          print("Fade =", self.tracks[self.selection[0]].fade)
         track_frame.update_text() #Frame shows correct text
-        track_frame.trim_frame.grid_remove() #Get rid of text boxes...
-        track_frame.grid_widget(3) #...and replace them with correct label displaying text
+        track_frame.trim_frames[index].grid_remove() #Get rid of text boxes...
+        track_frame.grid_widget(sel) #...and replace them with correct label displaying text
         self.entry_present = False #As there are now no entries on screen
-    elif self.selection[1] in (5, 6) and track_frame.trace_trim(2) and track_frame.trace_trim(3): #Volume or fade
-      if self.selection[1] == 5: #If volume
-        self.tracks[self.selection[0]].volume = int(track_frame.stat_entries[2].get()) #Set value
-      else: #elif self.selection[1] == 6, but 'else' by process of elimination
-        self.tracks[self.selection[0]].fade = float_(track_frame.stat_entries[3].get()) #'float_' also accepts '.'
+    elif self.selection[1] == 5 and track_frame.trace_trim(2) and track_frame.trace_trim(3): #Volume
+##      if self.selection[1] == 5: #If volume
+      self.tracks[self.selection[0]].volume = int(track_frame.stat_entries[2].get()) #Set value
+##      else: #elif self.selection[1] == 6, but 'else' by process of elimination
+##        self.tracks[self.selection[0]].fade = float_(track_frame.stat_entries[3].get()) #'float_' also accepts '.'
       track_frame.update_text() #Text updates to be accurate to variables it represents
       track_frame.grid_widget(self.selection[1]) #Place down widget no. 5 or 6
       self.entry_present = False #Entries are no longer present, allowing other procedures to run
@@ -345,17 +358,21 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     if self.entry_present: #Don't do anything if currently typing
       return #Stop any further code from running in this procedure
     if self.mode == 2: #Edit mode
+      sel = self.selection[1] #Pointer for easier access and higher efficiency & readability
       track_frame = self.track_frames[self.selection[0]] #Pointer with a shorter name so any changes are between both
       if self.selection[1] == 1: #Loop mode
         track_frame.track.loop = not track_frame.track.loop #Toggle - when pressed, toggle between
-      elif self.selection[1] == 3: #Trim mode
-        track_frame.labels[3].grid_remove() #Remove to add text entries instead
-        track_frame.trim_frame.grid(row = 0, column = 3, sticky = "NESW") #Place down and fill entire allocated row and column
-        track_frame.stat_entries[0].focus_set() #Place cursor
+      elif sel in (3, 6): #Trim or fade (both have 2 entries)
+        print("Sel =", sel)
+        index = {3:0, 6:1}[sel]
+        track_frame.labels[sel].grid_remove() #Remove to add text entries instead
+        track_frame.trim_frames[index].grid(row = 0, column = sel, sticky = "NESW") #Place down and fill entire allocated row and column
+        track_frame.stat_entries[0 if sel == 3 else 3].focus_set() #Place cursor
+        print(track_frame.trim_frames[index].winfo_children()[0].grid_info())
         self.entry_present = True #So it performs normally afterwards
-      elif self.selection[1] in (5, 6): #If volume or fade time
+      elif self.selection[1] == 5: #If volume
         track_frame.labels[self.selection[1]].grid_remove() #Remove selected label
-        track_frame.unique_frames[self.selection[1] - 5].grid(row = 0, column = self.selection[1], sticky = "NESW") #Uniqe: one text entry
+        track_frame.unique_frame.grid(row = 0, column = self.selection[1], sticky = "NESW") #Uniqe: one text entry
         track_frame.stat_entries[self.selection[1] - 3].focus_set() #Set focus to current entry
         self.entry_present = True #I've explained what this does enough ties
       self.track_frames[self.selection[0]].update_text() #I've explained this one enough too
@@ -484,10 +501,16 @@ class PlayThread(threading.Thread):
     self.play()
 
   def play(self):
+    print("play")
     self.parent.player.play()
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
-    self.parent.player.volume = self.track.volume / 100
+    length = self.track.length
+    trim = self.track.trim
+    fade = self.track.fade
+    fade_out_from = self.track.length - self.track.trim[1] - self.track.fade[1] #Start the fading out
+    fade_in_until = self.track.trim[0] + self.track.fade[0]
+    
     condition = lambda:(self.parent.player.time) < (self.track.length - self.track.trim[1])
     if not condition():
 ##      print("Progress = {}".format(track_frame_obj.track.trim[0]))
@@ -499,19 +522,26 @@ class PlayThread(threading.Thread):
       if self.parent.end:
         self.parent.destroy()
         return
-
-      start_fade = self.track.length - self.track.trim[1] - self.track.fade
-      if self.track.fade != 0 and self.parent.player.time >= start_fade:
-        self.parent.player.volume = (1 - ((self.parent.player.time - start_fade) / self.track.fade)) #NOT WORKING
-##        print(self.parent.player.volume)
-      else:
-        self.parent.player.volume = self.track.volume / 100
+      
+##      if self.track.fade[1] != 0 and self.parent.player.time >= start_fade_end:
+##        self.parent.player.volume = (1 - ((self.parent.player.time - start_fade_end) / self.track.fade[1]))
+##      elif self.track.fade[0] != 0 and self.parent.player.time <= start_fade_start and self.parent.player.time > self.track.trim[0]:
+##        self.parent.player.volume = self.parent.player.time / self.track.fade[0]
+##      else:
+##        self.parent.player.volume = self.track.volume / 100
+      time = self.parent.player.time
+      volume_mod = self.track.volume / 100
+      if fade[0] != 0 and time <= fade_in_until and time >= trim[0]:
+        volume_mod *= (time - trim[0]) / fade[0]
+      if fade[1] != 0 and time <= length - trim[1] and time >= fade_out_from:
+        volume_mod *= 1- ((time - fade_out_from) / fade[1])
+      self.parent.player.volume = volume_mod
       self.parent.update()
 ##      if self.parent.player.time < self.parent.progress_dvar.get() and self.parent.progress_dvar.get() > 1:
       if self.parent.progress_dvar.get() >= self.track.length - self.track.trim[0]:
         print("END")
         break
-      if self.parent.progress_dvar.get() - self.parent.player.time > 1:
+      if self.parent.progress_dvar.get() - self.parent.player.time > 0.2:
         print("Backtracked")
         break
       else:
@@ -578,24 +608,34 @@ class TrackFrame(tk.Frame):
     self.track = track
     self.labels = []
 
-    self.trim_frame = tk.Frame(self, **style())
+    self.trim_frames = [tk.Frame(self, **style()) for i in range(2)]
     ##
-    entry_frame_config(self.trim_frame, 2)
+    for i in range(2):
+      entry_frame_config(self.trim_frames[i], 2)
     ##
     
-    variables = tuple(self.track.trim) + (self.track.volume, self.track.fade)
+    variables = tuple(self.track.trim) + (self.track.volume,) + tuple(self.track.fade)
     self.stat_entries = []
-    self.stat_svars = [tk.StringVar(value = variables[i]) for i in range(4)]
-    self.unique_frames = [tk.Frame(self, **style()) for i in range(2)]
+    self.stat_svars = [tk.StringVar(value = variables[i]) for i in range(5)]
+    self.unique_frame = tk.Frame(self, **style())
 
-    #Loop below: 4 string variables for 4 entries (2 for trim, 1 for volume, 1 for fade)
-    for i in range(4): #Terary operators: 0 or 1 for trim, 2 or 3 for independent stats
-      self.stat_entries.append(tk.Entry((self.trim_frame if i <= 1 else self.unique_frames[i - 2]), textvariable = self.stat_svars[i], **ENTRY_KW, width = (4 if i <= 1 else 6)))
-      self.stat_entries[i].grid(row = 0, column = (i if i <= 1 else 0))
-      if i >= 2:
-        entry_frame_config(self.unique_frames[i -2], 1)
+    #Loop below: 4 string variables for 5 entries (2 for trim, 1 for volume, 2 for fade)
+    for i in range(5): #Terary operators: 0 or 1 for trim, 2 or 3 for independent stats
+      if i == 2:
+        col = 0
+        frame = self.unique_frame
+      else:
+        if i < 2:
+          col = i
+          frame = self.trim_frames[0]
+        else:
+          col = i - 3
+          frame = self.trim_frames[1]
+      self.stat_entries.append(tk.Entry(frame, textvariable = self.stat_svars[i], width = (4 if i == 2 else 6), **ENTRY_KW))
+      self.stat_entries[i].grid(row = 0, column = col, sticky = "EW") #0 if only one text entry
+      if i == 2: #If third/volume
+        entry_frame_config(self.unique_frame, 1)
       self.stat_svars[i].trace("w", lambda *args, i = i: self.trace_trim(i))
-
     self.update_text()
     grid_config(self)
     for i in range(len(self.text)):
@@ -648,11 +688,9 @@ class TrackFrame(tk.Frame):
   
   @highlight.setter
   def highlight(self, value):
-    """When the highlight changes, set the highlighted song to be whatever the
-    selection is"""
-    self._highlight = value #Assign highlight property to the value given
-    for i in range(len(self.labels)): #Iterate i throught the number of tracks
-      self.labels[i].config(bg = (HL_BG if i in self.highlight else style()["bg"])) #Set to default if not selected
+    self._highlight = value
+    for i in range(len(self.labels)):
+      self.labels[i].config(bg = (HL_BG if i in self.highlight else style()["bg"]))
   
   def playing_state_set(self, value):
     if value == "toggle":
