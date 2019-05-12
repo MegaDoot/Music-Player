@@ -76,7 +76,6 @@ def add_path(path):
 
 add_path(PY_PATH)
 add_path(FFMPEG_PATH)
-print(os.environ["PATH"])
 
 def imp(name):
   globals()[name] = __import__(name)
@@ -478,7 +477,8 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
 
   def end(self):
     """Calls when root window closes"""
-    self.player.pause() #Stop track from playing
+    if hasattr(self, "player"):
+      self.player.pause() #Stop track from playing
     self.save() #Save current state
     if len(self.tracks) != 0 and self.tracks[self.selection[0]].playing:
       print("Running")
@@ -613,8 +613,7 @@ class TrackFrame(tk.Frame):
     for i in range(2):
       entry_frame_config(self.trim_frames[i], 2)
     ##
-    
-    variables = tuple(self.track.trim) + (self.track.volume,) + tuple(self.track.fade)
+    variables = tuple(self.track.trim) + tuple([self.track.volume]) + tuple(self.track.fade)
     self.stat_entries = []
     self.stat_svars = [tk.StringVar(value = variables[i]) for i in range(5)]
     self.unique_frame = tk.Frame(self, **style())
