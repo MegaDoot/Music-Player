@@ -44,7 +44,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 import random #Testing purposes
 import threading #For running more than one process at one time
-import time #Pause certain amounts of time
+import time as t #Pause certain amounts of time
 import os #File management
 import sys #Command line arguments and exiting process
 import json #Loads/ dumps JSON files/dictionaries
@@ -60,7 +60,8 @@ else:
   FILE_PATH = os.path.dirname(os.path.realpath(__file__)) #Location of this file
 
 NAMES_COMMANDS = (
-  ("pyglet","python -m pip install pyglet"), #Note that '-m' means module
+  ("pyglet","python -m pip install pyglet==1.2.4"), #Note that '-m' means module
+##  ("pyglet_ffmpeg", "python -m pip install pyglet-ffmpeg"),
   ("soundfile","python -m pip install soundfile"), #For using metadata to find length of file
   ("mutagen.mp3", "python -m pip install mutagen"), #Find length of .mp3 if metadata not available/erroneous/wrong format
   ("eyed3", "python -m pip install python-magic-bin==0.4.14 & python -m pip install eyed3"), #libmagic needed for eyed3, for .wav
@@ -68,14 +69,15 @@ NAMES_COMMANDS = (
 
 PY_PATH = os.path.dirname(sys.executable) #Any library will do
 PATHS = os.environ["PATH"].split(";") #PATH is separated by semicolons - produces a list containing each path
-FFMPEG_PATH = FILE_PATH + r"\ffmpeg\ffmpeg-20190511-68bac50-win32-static\bin"
+##FFMPEG_PATH = FILE_PATH + r"\ffmpeg\ffmpeg-20190511-68bac50-win32-static\bin"
 
 def add_path(path):
   if not path in PATHS: #Must be in paths to be used on the command line
     os.environ["PATH"] += ";" + path #Add to path (temporarily)
 
 add_path(PY_PATH)
-add_path(FFMPEG_PATH)
+##add_path(FILE_PATH + r"\avbin.dll")
+##add_path(FFMPEG_PATH)
 
 def imp(name):
   globals()[name] = __import__(name)
@@ -90,12 +92,16 @@ for i in range(len(NAMES_COMMANDS)):
     except: #Note that errors raised by os.system are not caught (hence the exception that encompasses all)
       print("ERROR: Could not import library '{}' (see top of code for troubleshooting)".format(NAMES_COMMANDS[i][0]))
 
+##pyglet_ffmpeg.load_ffmpeg()
+pyglet.lib.load_library("avbin")
+
 ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time") #Names of each attribute
 MODES = ("Select", "Order", "Edit") #Names of modes (note that these can be changed without having to change any other code)
 HL_BG = "#4c4c4c" #Colour for when highlighted
 BG = "#212121" #Colour of background
 FG = "#afafaf" #Colour of foreground (text)
 CHARS = "4;ra" #Pause, play, cross, tick in Webdings font (these characters would have to be emojis otherwise)
+LEN = 600 #Length of the turtle at the bottom of the window
 KEY_MOVE = {
   "<Right>":(lambda column:(0, 2 if column in (6, 1, 3) else 1)), #Skips out certain columns that can't be edited
   "<Left>":(lambda column:(0, -2 if column in (1, 3 , 5) else -1)), #Subtract one extra if in certain columes
@@ -135,8 +141,12 @@ def style(size = 0): #Call style() to not have anything text-related (to not cau
     result["font"] = ["Consolas", size] #This needs to be mutable so that the font can be changed to Webdings for the special characters
   return result
 
+TEXT_COLOURS = {True: "#ff6868", False: FG}
 ENTRY_KW = {**style(15), **{"insertbackground":FG, "highlightthickness":3, "highlightbackground":FG, "highlightcolor":FG, "relief":"solid"}}
 #Add **ENTRY_KW to tk.Entry widget to use this styling
+
+def text_colour(track_frame):
+  return TEXT_COLOURS[track_frame.error][0 if track_frame.highlight == [] else 1]
 
 def replace(dictionary, *kv): #For debugging purporses. Call as: replace({1:2, 3:10, 5:7}, (5, 6), (3, 4))
   copy = dictionary.copy()
@@ -172,6 +182,7 @@ float_ = lambda string: 0.0 if string == "." else float(string) #Converts to a f
 class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
   def __init__(self):
     super().__init__() #Run tk.Tk.__init__
+    self.withdraw()
     self.configure(**style()) #BG value in dictionary returned only
     self.title("W.I.P")
     self.pack_propagate(True) #By default, it's true, but here to make it easier to change
@@ -209,10 +220,8 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       for i in range(len(self.tracks) - len(order)):
         order.append(max(order) + 1) #If more tracks added, keep adding extra numbers on the end one more than the highest number there
         #Note that this causes new tracks to be added to the end by default
-      print("order = {}".format(order))
-      print(self.tracks)
+##      print("order = {}".format(order))
       self.tracks = [self.tracks[num] for num in order] #Now they are the same length, put all of the tracks in the right order
-      print(self.tracks)
     self.selection = (0, 0) #Selected track, selected attribute (edit mode only)
     self.track_selection = (0, 0) #Selected track, selected attribute. This allows for changing selection without changing the currently playing track
     self.modulo = (len(self.tracks), len(COLUMN_WIDTHS))
@@ -256,6 +265,24 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     #This is placed down on the canvas so that when the scrollbar (which is bound to all children of self.canvas) moves, this frame moves
     self.scrollbar.grid(row = 2, column = 1, sticky = "NSE") #The 'NS' stretches it out up and down instead of being small
 
+    self.t_canvas = tk.Canvas(self, height = 110, width = 200 + LEN, highlightthickness = 0)
+    self.t_canvas.grid(row = 3, column = 0, columnspan = 2)
+    self.t_screen = turtle.TurtleScreen(self.t_canvas)
+    self.t_screen.bgcolor(BG)
+    self.t_screen.delay(0)
+    self.t_screen.tracer(0, 0)
+    self.static_tu = turtle.RawTurtle(self.t_screen)
+    self.dynamic_tu = turtle.RawTurtle(self.t_screen)
+    self.dynamic_tu.ht()
+    self.static_tu.ht()
+    self.dynamic_tu.pencolor("white")
+    self.static_tu.pencolor(FG)
+    self.draw_line(40)
+    self.draw_line(-40)
+    self.write_text("100%", (-350, 32))
+    self.write_text("  0%", (-350, -47))
+    self.t_screen.update()
+
     self.song_frame.bind("<Configure>", self.on_frame_config) #Whenever a widget changes this frame's confiuration, calls the method
     self.bind("<Shift_L>", self.shift_pressed) #Note that there is no binding that encompasses both shifts
     if len(self.tracks) != 0: #This does not need to be done if there are not tracks and will raise exceptions
@@ -279,8 +306,70 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       self.play_thread.start() #Now all methods in this thread can be called at any time.
 
     self.shift_pressed(increment = 0) #Set up things within it without changing anything
-    
+    self.media_player(self.tracks[self.selection[0]])
+
+    for i in range(len(self.tracks)):
+      self.highlight_error(i) #Highlight in correct colour, checking if erroneous
+
+    self.deiconify()
     self.mainloop() #Done by default in IDLE, but when nothing is happening, this stops the program from closing
+
+  def write_text(self, text, pos, rawturtle = "static_tu", size = 10, colour = "white"):
+    rawturtle = getattr(self, rawturtle)
+    rawturtle.pu()
+    rawturtle.setpos(*pos)
+    font = style(size)["font"]
+    rawturtle.color(colour)
+    rawturtle.write(text, font = tuple(font + ["normal"]))
+    rawturtle.color("white")
+
+  def draw_line(self, y):
+    self.static_tu.pu()
+    self.static_tu.setpos(-320, y)
+    self.static_tu.pd()
+    self.static_tu.setpos(-310, y)
+
+  def draw_chart(self, track):
+    self.dynamic_tu.clear()
+    if self.track_frames[self.tracks.index(track)].error:
+      self.write_text("The Fade And/Or Trim\nValues Are Too Large", (-150, -20), "dynamic_tu", 20, "#ff4747")
+    else:
+      find_x = lambda time: 600 * (time / track.length) - 300
+      find_y = lambda volume: (80 * (volume / 100)) - 40
+      self.dynamic_tu.pu()
+      self.dynamic_tu.setpos(-300, -40)
+      self.dynamic_tu.pd()
+
+      intersection = False
+      if track.fade[0] + track.fade[1] > track.length - track.trim[0] - track.trim[1]: #If they overlap, find the point of intersection
+        intersection = True
+        gradient1 = track.volume / track.fade[0]
+        gradient2 = track.volume / (track.trim[1] - track.fade[1])
+
+        intercept1 = 0
+        intercept2 = (-track.length * gradient2)
+
+        x_cross = (intercept2 - intercept1) / (gradient1 - gradient2)
+        y_cross = x_cross * gradient1 #Ignore if over volume
+        print("y = {}x, y = {}x + {}".format(gradient1, gradient2, intercept2))
+
+        percentage = (track.length - track.trim[0] - track.trim[1]) / track.length
+        #Finds how much it takes up so it can shrink (makes the maths easier)
+      
+      goto = lambda time, volume: self.dynamic_tu.setpos(find_x(time), find_y(volume))
+      goto(0, 0)
+      goto(track.trim[0], 0)
+      if intersection:
+        goto(track.trim[0] + (x_cross * percentage), y_cross)
+        goto(track.length - track.trim[1], 0)
+      else:
+        goto(track.fade[0] + track.trim[0], track.volume)
+        goto(track.length - track.fade[1] - track.trim[1], track.volume)
+        goto(track.length - track.trim[1], 0)
+      goto(track.length, 0)
+  ##    goto(track.fade[0], track.volume)
+  ##    goto(track.length - track.trim[1] - track.trim[0] - track.fade[1] - track.fade[0], track.volume)
+  ##    goto(track.fade[1] - track.trim[1], 0)
 
   def save(self):
     if len(self.tracks) == 0: #If there are no tracks, there is nothing to save
@@ -301,7 +390,6 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     with open("Effects.json", "w") as file: #Closes 'file' when finished
       json.dump(effects, file) #Put 'effects' into 'Effects.json' as a dictionary
     print("Saved effects")
-    print(effects)
   
   def update_bar(self, *events): #Automatically adds extra arguments when called
     """Usage of *map below: map applies 'to_minutes' to each one. The 'format'
@@ -314,7 +402,6 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       self.time_lbl.config(text = "{} / {}".format(*map(to_minutes, (self.progress_dvar.get(), self.tracks[self.track_selection[0]].length))))
   
   def on_frame_config(self, event):
-    print("Config")
     """'bbox' is short for 'bounding box', so, by setting it to "all", it finds
     everything that's in the canvas. Alternatively, this can be a tuple,
     (n, e, s w). Called whenever """
@@ -338,11 +425,11 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
           self.tracks[self.selection[0]].trim = assign #Set values to values typed
         elif sel == 6:
           self.tracks[self.selection[0]].fade = assign
-          print(assign)
-          print("Fade =", self.tracks[self.selection[0]].fade)
+##          print("Fade =", self.tracks[self.selection[0]].fade)
         track_frame.update_text() #Frame shows correct text
         track_frame.trim_frames[index].grid_remove() #Get rid of text boxes...
         track_frame.grid_widget(sel) #...and replace them with correct label displaying text
+        self.highlight_error(self.selection[0]) #Highlight in correct colour, checking if erroneous
         self.entry_present = False #As there are now no entries on screen
     elif self.selection[1] == 5 and track_frame.trace_trim(2) and track_frame.trace_trim(3): #Volume
 ##      if self.selection[1] == 5: #If volume
@@ -351,8 +438,19 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
 ##        self.tracks[self.selection[0]].fade = float_(track_frame.stat_entries[3].get()) #'float_' also accepts '.'
       track_frame.update_text() #Text updates to be accurate to variables it represents
       track_frame.grid_widget(self.selection[1]) #Place down widget no. 5 or 6
+      self.highlight_error(self.selection[0]) #Highlight in correct colour, checking if erroneous
       self.entry_present = False #Entries are no longer present, allowing other procedures to run
 
+
+  def highlight_error(self, index):
+    track = self.tracks[index]
+    if sum(track.fade) > track.length - sum(track.trim):
+      erroneous = True
+    else:
+      erroneous = False
+    self.track_frames[index].error = erroneous
+    self.track_frames[index].update_text()
+  
   def space_pressed(self, event):
     if self.entry_present: #Don't do anything if currently typing
       return #Stop any further code from running in this procedure
@@ -362,12 +460,11 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       if self.selection[1] == 1: #Loop mode
         track_frame.track.loop = not track_frame.track.loop #Toggle - when pressed, toggle between
       elif sel in (3, 6): #Trim or fade (both have 2 entries)
-        print("Sel =", sel)
         index = {3:0, 6:1}[sel]
         track_frame.labels[sel].grid_remove() #Remove to add text entries instead
         track_frame.trim_frames[index].grid(row = 0, column = sel, sticky = "NESW") #Place down and fill entire allocated row and column
         track_frame.stat_entries[0 if sel == 3 else 3].focus_set() #Place cursor
-        print(track_frame.trim_frames[index].winfo_children()[0].grid_info())
+##        print(track_frame.trim_frames[index].winfo_children()[0].grid_info())
         self.entry_present = True #So it performs normally afterwards
       elif self.selection[1] == 5: #If volume
         track_frame.labels[self.selection[1]].grid_remove() #Remove selected label
@@ -410,15 +507,17 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     del self.player #Remove it from memory
     self.player = pyglet.media.Player() #Reset it to a new player object
     os.chdir(FILE_PATH + r"\Tracks") #Go to 'Tracks' folder in current working directory
-    try: #Attempt - can cause errors (the cause of which is unknown to me)
-      source = pyglet.media.load(repr(track_obj)) #Load name of track object
-    except Exception as error: #No specific error, 'error' saved to record type
-      print("Diagnostic:")
-      print("Error type = '{}'".format(type(error))) #Tyoe of exception raised
-      print("os.listdir() = {}\nrepr(track_obj) = {}, CWD = {}".format(os.listdir(), repr(track_obj), os.getcwd())) #General diagnostic
-      sys.exit() #Stop program from running
+##    try: #Attempt - can cause errors (the cause of which is unknown to me)
+##      pyglet.app.exit()
+    source = pyglet.media.load(repr(track_obj)) #Load name of track object
+##      pyglet.app.run()
+##    except Exception as error: #No specific error, 'error' saved to record type
+##      print("Diagnostic:")
+##      print("Error: '{}'".format(error), sep = "\n")
+##      print("\nError type = '{}'".format(type(error))) #Type of exception raised
+##      print("os.listdir() = {}\nrepr(track_obj) = {}, CWD = {}".format(os.listdir(), repr(track_obj), os.getcwd())) #General diagnostic
+##      sys.exit() #Stop program from running
     self.player.queue(source) #Add track to queue
-    print(track_obj.trim[0])
     self.progress_dvar.set(track_obj.trim[0]) #Reset track to first trim value
     self.focus_set() #Set focus to root window
     
@@ -456,6 +555,9 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       self.selection[1] = 1 #Reset stat selection (so not preserved when goes back to edit mode)
 
       track = self.tracks[self.selection[0]] #Juance again, for easier access, readability, 'dryness' and efficiency
+      if self.mode == 0:
+        self.draw_chart(track)    
+      self.t_screen.update()
       if change[1] < 0: #If left pressed/goes backwards (serves purpose of changing stat selection and time within track)
         seek = self.player.time - 5 #5 backwards seconds
         if seek < track.trim[0]: #If it goes back too far (before it should)
@@ -490,18 +592,32 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       else:
         self.destroy()
 
+##class MainThread(threading.Thread):
+##  def start(self):
+##    app = App()
+
+##class PygletThread(threading.Thread):
+##  def __init__(self):
+##    super().__init__(daemon = False)
+##
+##  def start(self):
+##    print("Started Thread")
+##    pyglet.app.run()
+##
+##  def stop(self):
+##    pyglet.app.exit()
+
 class PlayThread(threading.Thread):
   def __init__(self, thread_id, track, parent):
     super().__init__(daemon = False)
     self.id = thread_id
     self.track = track
     self.parent = parent
-  
+
   def run(self):
     self.play()
-
+  
   def play(self):
-    print("play")
     self.parent.player.play()
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
@@ -549,32 +665,12 @@ class PlayThread(threading.Thread):
 ##      else:
 ##        print("Looks like it skipped back")
     #Run code below if ended by getting to the end
-    print("Exited")
     self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
     if self.track.loop:
       self.play()
     else:
+      t.sleep(1)
       track_frame_obj.playing_state_set(False)
-
-class MusicThread(threading.Thread):
-  def __init__(self, thread_id, track, parent):
-    super().__init__(daemon = False)
-    self.thread_id = thread_id
-    self.track = track
-    self.parent = parent
-  
-  def set_track(self, track):
-    self.pause()
-    self.track = track
-
-  def run(self):
-    self.play()
-  
-  def play(self):
-    self.parent.player.play()
-  
-  def pause(self):
-    self.parent.player.pause()
 
 class Track:
   def __init__(self, name, track_length, num, loop = False, trim_values = (0, 0), volume_modifier = 100, fade_time = 0):
@@ -607,7 +703,8 @@ class TrackFrame(tk.Frame):
 
     self.track = track
     self.labels = []
-
+    self.error = False
+    
     self.trim_frames = [tk.Frame(self, **style()) for i in range(2)]
     ##
     for i in range(2):
@@ -658,6 +755,8 @@ class TrackFrame(tk.Frame):
     self.text = (CHARS[0], CHARS[self.track.loop + 2], "'{}'".format(add_ellipses(self.track.name)), "{}s, {}s".format(*self.track.trim), to_minutes(int(self.track.length)), "{}%".format(self.track.volume), "{}s, {}s".format(*self.track.fade))
     for i in range(1, len(self.labels)):
       self.labels[i].config(text = self.text[i])
+    for widget in self.labels:
+      widget.config(fg = TEXT_COLOURS[self.error])
   
   def trace_trim(self, n):
     """Convert the to the stat_entries[n] to the correct colour - normal if
@@ -698,5 +797,8 @@ class TrackFrame(tk.Frame):
       self.track.playing = value #Toggle
     self.labels[0].config(text = CHARS[self.track.playing])
 
-if __name__ == "__main__":
-  app = App()
+
+app = App()
+##main_thread = MainThread()
+##main_thread.start()
+##pyglet.app.run()
