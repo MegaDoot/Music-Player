@@ -94,6 +94,7 @@ for i in range(len(NAMES_COMMANDS)):
 
 ##pyglet_ffmpeg.load_ffmpeg()
 pyglet.lib.load_library("avbin")
+pyglet.have_avbin = True
 
 ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time") #Names of each attribute
 MODES = ("Select", "Order", "Edit") #Names of modes (note that these can be changed without having to change any other code)
