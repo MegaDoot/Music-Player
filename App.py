@@ -668,9 +668,9 @@ class PlayThread(threading.Thread):
     #Run code below if ended by getting to the end
     self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
     if self.track.loop:
+      t.sleep(1)
       self.play()
     else:
-      t.sleep(1)
       track_frame_obj.playing_state_set(False)
 
 class Track:
