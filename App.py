@@ -50,7 +50,12 @@ import sys #Command line arguments and exiting process
 import json #Loads/ dumps JSON files/dictionaries
 import re #Regular expressions for checking validity of information entered
 import turtle #Draws fade graph
+import pygame
+import soundfile
+import mutagen.mp3
+import eyed3
 #Also import pyglet, soundfile, mutagen.mp3 and eyed3
+
 
 if getattr(sys, "frozen", False): #If executable
   print("Running as executable")
@@ -79,6 +84,7 @@ add_path(PY_PATH)
 ##add_path(FILE_PATH + r"\avbin.dll")
 ##add_path(FFMPEG_PATH)
 
+"""
 def imp(name):
   globals()[name] = __import__(name)
 
@@ -86,15 +92,15 @@ for i in range(len(NAMES_COMMANDS)):
   try:
     imp(NAMES_COMMANDS[i][0]) #Import the first string in the selected tuple
   except ImportError:
-    os.system("echo {} not found; installing & {} & Pause".format(*NAMES_COMMANDS[i])) #Install it on the command line
+    os.system("echo {} not found; installing & {}".format(*NAMES_COMMANDS[i])) #Install it on the command line
     try: #Not guarunteed to wirj
       imp(NAMES_COMMANDS[i][0])
     except: #Note that errors raised by os.system are not caught (hence the exception that encompasses all)
       print("ERROR: Could not import library '{}' (see top of code for troubleshooting)".format(NAMES_COMMANDS[i][0]))
-
+"""
 ##pyglet_ffmpeg.load_ffmpeg()
-pyglet.lib.load_library("avbin")
-pyglet.have_avbin = True
+#pyglet.lib.load_library("avbin")
+#pyglet.have_avbin = True
 
 ATTR_NAMES = ("State", "Loop", "Name", "Trim", "Duration","Volume", "Fade Time") #Names of each attribute
 MODES = ("Select", "Order", "Edit") #Names of modes (note that these can be changed without having to change any other code)
@@ -113,6 +119,10 @@ KEY_MOVE = {
 CUTOFF_LENGTH = 35 #How long a name can be before it is cut off and ended with and ellipsis
 COLUMN_WIDTHS = (80, 80, 420, 130, 130, 130, 130) #How much space is allocated to each widget
 DEFAULT_PARAMS = (False, (0.0, 0.0), 100, (0.5, 0.0)) #When Config.json is missing the file (i.e. new file added), use these arguments
+
+def _audio_length(file_name):
+  tmp = pygame.mixer.Sound(file_name)
+  return tmp.get_length()
 
 def audio_length(file_name):
   try:
@@ -210,7 +220,8 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
         del effects[included] #If files have been removed, remove them
     del effect_copy
     self.effects = effects #Make effects 'global' to the class (all methods within it can access it)
-    self.tracks = [Track(track_list[i], 0.5 + audio_length(track_list[i]), i, *effects[track_list[i]]) for i in range(len(track_list))]
+    print(track_list)
+    self.tracks = [Track(track_list[i], audio_length(track_list[i]), i, *effects[track_list[i]]) for i in range(len(track_list))]
     #Create new Track object for each track name with the corrrct name, length and effects
     #Note that the 0.5 second buffer is to account for cutting tracks slightly short (a problem with the library?)
     with open(FILE_PATH + r"\Config\Order.txt") as file: #with statement automatically closes the file when it ends
@@ -300,7 +311,12 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       self.track_frames[0].highlight = range(len(COLUMN_WIDTHS)) #Highlight all columns in the first TrackFrame object
     self.entry_present = False #Whether or not there is an entry widget on screen (disables shift and space callbacks to not hinder typing)
 
-    self.player = pyglet.media.Player() #Creates a track
+    #self.player = pyglet.media.Player() #Creates a track
+    #pygame.mixer.pre_init(22100, 16, 2, 65)
+    pygame.mixer.init()
+    pygame.init()
+    DISPLAYSURF = pygame.display.set_mode((400, 300))
+    self.offset = 0
 
     if len(self.tracks) != 0:
       self.play_thread = PlayThread(1, self.tracks[0], self) #Creates an instance of a class that inherits from threading.Thread
@@ -397,7 +413,8 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     method requires 2 arguments in this case, but 1 was given, an iterable of
     length 2, so, by 'starring' it, it unpacks the map object into 2 arguments.
     """
-    if len(self.tracks) == 0: #Dividing by zero never ends well
+    #print("PROGRESS:", self.progress_dvar.get())
+    if len(self.tracks) == 0: #No tracks to display
       self.time_lbl.config(text = "00:00 / 00:00") #Default if there are no files
     else: #Gets length, converts it to minutes and displays at the end
       self.time_lbl.config(text = "{} / {}".format(*map(to_minutes, (self.progress_dvar.get(), self.tracks[self.track_selection[0]].length))))
@@ -480,7 +497,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       return #Nothing else required
 
     if self.track_selection != self.selection: #New item selected
-      self.player.pause() #Will stop previous track (would continue even if deleted)
+      pygame.mixer.music.pause() #Will stop previous track (would continue even if deleted)
       self.media_player(self.tracks[self.selection[0]]) #Reassign and reset everything
       ##self.music_thread.set_track(self.tracks[self.selection[0]])
       for i in range(len(self.track_frames)): #Iterate throught number of tracks
@@ -494,23 +511,29 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     if track_frame_obj.track.playing: #If a song is currently playing
       self.progress_pb.config(maximum = self.tracks[self.track_selection[0]].length) #Set maximum value to length of selected song
       seek_time = self.tracks[self.selection[0]].trim[0] #Start track at first trim value
-      if self.player.time < seek_time: #Only set if it's below (otherwise, resume)
-        if seek_time > 0: #This appears to be a bug with pyglet, where it will constantly reset set to 0 if 0
-          print("trim[0] = {}".format(seek_time))
-          self.player.seek(seek_time) #Set time to seek_time
+##      if pygame.mixer.music.get_pos() < seek_time: #Only set if it's below (otherwise, resume)
+##        if seek_time > 0: #This appears to be a bug with pyglet, where it will constantly reset set to 0 if 0
+##          print("trim[0] = {}".format(seek_time))
+##          pygame.mixer.music.set_pos(seek_time) #Set time to seek_time
+      print("PLAYING THREAD")
+      pygame.mixer.music.play(0, 0)
       self.play_thread.play() #Play track
   
   def media_player(self, track_obj):
     """Resets self.player as it uses a queue that cannot be reversed or
     backtracked after reaching the end, so it is necessary to use just one
     track in the queue and delete it and reset it once the end is reached."""
-    self.player.pause() #Stop current track as it will continue even if it has been deleted
-    del self.player #Remove it from memory
-    self.player = pyglet.media.Player() #Reset it to a new player object
+    #self.player.pause() #Stop current track as it will continue even if it has been deleted
+    #del self.player #Remove it from memory
+    #self.player = pyglet.media.Player() #Reset it to a new player object
     os.chdir(FILE_PATH + r"\Tracks") #Go to 'Tracks' folder in current working directory
+    print(track_obj, type(track_obj), track_obj.__dict__)
+    pygame.mixer.music.load(track_obj.name)
+    print("Loaded:", track_obj.name)
+    #pygame.mixer.music.play()
 ##    try: #Attempt - can cause errors (the cause of which is unknown to me)
 ##      pyglet.app.exit()
-    source = pyglet.media.load(repr(track_obj)) #Load name of track object
+    #source = pyglet.media.load(repr(track_obj)) #Load name of track object
 ##      pyglet.app.run()
 ##    except Exception as error: #No specific error, 'error' saved to record type
 ##      print("Diagnostic:")
@@ -518,7 +541,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
 ##      print("\nError type = '{}'".format(type(error))) #Type of exception raised
 ##      print("os.listdir() = {}\nrepr(track_obj) = {}, CWD = {}".format(os.listdir(), repr(track_obj), os.getcwd())) #General diagnostic
 ##      sys.exit() #Stop program from running
-    self.player.queue(source) #Add track to queue
+    #self.player.queue(source) #Add track to queue
     self.progress_dvar.set(track_obj.trim[0]) #Reset track to first trim value
     self.focus_set() #Set focus to root window
     
@@ -531,6 +554,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       self.change_selection(lambda column:(0, 0)) #
 
   def change_selection(self, change):
+    current_time = pygame.mixer.music.get_pos() / 1000
     if self.entry_present: #If textboxes present on screen, don't allow mode change
       return #Stop this procedure from running
     change = change(self.selection[1]) #For easier usage, sets change to correct value (should this be skipped)
@@ -538,8 +562,10 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
 
     if self.mode == 1: #If order mode
       pos = self.selection[0] #Currently selected track
-      edits = (pos, (pos - change[0]) % len(self.tracks)) #Currently selected and new selected (what should be switched)
-      self.tracks[edits[0]], self.tracks[edits[1]] = self.tracks[edits[1]], self.tracks[edits[0]] #Switch these two tracks
+      edits = (pos, ((pos - change[0]) % len(self.tracks)) + 1) #Currently selected and new selected (what should be switched)
+##      self.tracks[edits[0]], self.tracks[edits[1]] = self.tracks[edits[1]], self.tracks[edits[0]] #Switch these two tracks
+      move = self.tracks.pop(pos)
+      self.tracks.insert(edits[1] - 1, move)
       for i in range(2): #Iterate through each 2 elements of edit
         self.track_frames[edits[i]].destroy() #Remove this frame from the grid manager permentantly
         new = edits[i] #Easier acess and more efficient
@@ -559,21 +585,28 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       if self.mode == 0:
         self.draw_chart(track)    
       self.t_screen.update()
+      #"""
       if change[1] < 0: #If left pressed/goes backwards (serves purpose of changing stat selection and time within track)
-        seek = self.player.time - 5 #5 backwards seconds
-        if seek < track.trim[0]: #If it goes back too far (before it should)
-          seek = track.trim[0] #Set it to earliest possible point (start of song)
-        if seek == 0: #Bug with Pyglet where seeking to 0 causes constant juttering and not playing, just looping first part
-          seek = 0.01 #Set to imperceptible time after start and 0.01 seems appropriate
+        new_offset = current_time + self.offset - 5 #5 backwards seconds (5000 ms)
+        if new_offset < track.trim[0]: #If it goes back too far (before it should)
+          new_offset = track.trim[0] #Set it to earliest possible point (start of song)
+        #if seek == 0: #Bug with Pyglet where seeking to 0 causes constant juttering and not playing, just looping first part
+          #seek = 0.01 #Set to imperceptible time after start and 0.01 seems appropriate
       elif change[1] > 0: #If right arrow pressed, goes forward/right
-        seek = self.player.time + 5 #Forward 5 seconds into the track
-        if seek > track.length - track.trim[1]: #If number exceeds ending point of song
-          seek = track.length - track.trim[1] #Set to latest possible point in the song
+        print("Current s:", current_time)
+        new_offset = current_time + self.offset + 5 #Forward 5 seconds into the track
+        print("Initial offset s:", new_offset)
+        if new_offset > track.length - track.trim[1]: #If number exceeds ending point of song
+          new_offset = (track.length - track.trim[1]) - current_time #Set to latest possible point in the song
       if change[1] != 0: #If either check for greater or less than 0 correct
-        self.player.seek(seek) #Set current time to time calculated to seek to
-        self.progress_dvar.set(self.player.time) #Update progress variable to display correct time
-        self.update_bar() #Update progress bar to display correct length
-
+        #pygame.mixer.music.rewind()
+        #pygame.mixer.music.rewind()
+        #self.play_thread.on_hold = True
+        self.offset = new_offset
+        print("Offset:", self.offset)
+        self.play_thread.offset_time = True
+        #self.play_thread.on_hold = False
+    #"""
     bottom = int(self.scrollbar.get()[1] * len(self.track_frames)) #Track at the bottom currently visible tracks
     if not self.selection[0] in range(bottom - 5, bottom): #If selected track is not on screen
       self.canvas.yview("moveto", (self.selection[0] / len(self.track_frames))) #Move the canvas so that is the case
@@ -614,29 +647,47 @@ class PlayThread(threading.Thread):
     self.id = thread_id
     self.track = track
     self.parent = parent
+    self.offset_time = False
 
   def run(self):
-    self.play()
+    return
   
   def play(self):
-    self.parent.player.play()
+    #return
+    print("PLAYING")
+    #self.parent.player.play()
     track_frame_obj = self.parent.track_frames[self.parent.selection[0]]
     self.track = track_frame_obj.track
+    print(self.track.name)
     length = self.track.length
     trim = self.track.trim
     fade = self.track.fade
     fade_out_from = self.track.length - self.track.trim[1] - self.track.fade[1] #Start the fading out
     fade_in_until = self.track.trim[0] + self.track.fade[0]
-    
-    condition = lambda:(self.parent.player.time) < (self.track.length - self.track.trim[1])
+    #pygame.mixer.music.load(self.track.name)
+    condition = lambda:(pygame.mixer.music.get_pos() / 1000) < (self.track.length - self.track.trim[1])
     if not condition():
 ##      print("Progress = {}".format(track_frame_obj.track.trim[0]))
       self.parent.progress_dvar.set(track_frame_obj.track.trim[0])
-    while condition():
+    time = 0
+    while True:#condition():
+      if self.offset_time:
+        #self.parent.progress_dvar.set(self.queued_time)
+        #pygame.mixer.music.set_pos(self.queued_time)
+        print("playing from", self.parent.offset)
+        pygame.mixer.music.rewind()
+        pygame.mixer.music.play(0, self.parent.offset) #set time to current time + offset
+        #self.parent.progress_dvar.set(pygame.mixer.music.get_pos() + self.parent.offset)
+        self.offset_time = False
+      self.parent.update_bar() #Update progress bar to display correct length
+      self.parent.update()
+      #t.sleep(0.1)
       if not self.track.playing:
-        self.parent.player.pause()
+        pygame.mixer.music.pause()
+        print("Pause")
         return
       if self.parent.end:
+        print("delete parent")
         self.parent.destroy()
         return
       
@@ -646,27 +697,36 @@ class PlayThread(threading.Thread):
 ##        self.parent.player.volume = self.parent.player.time / self.track.fade[0]
 ##      else:
 ##        self.parent.player.volume = self.track.volume / 100
-      time = self.parent.player.time
+      time = pygame.mixer.music.get_pos() / 1000
+      if time == -0.001:
+        print("Backtracked")
+        break
+      self.parent.progress_dvar.set(time + self.parent.offset - 0.5)
+      print(time, self.parent.progress_dvar.get())
+      #print("time =", time)
       volume_mod = self.track.volume / 100
       if fade[0] != 0 and time <= fade_in_until and time >= trim[0]:
         volume_mod *= (time - trim[0]) / fade[0]
       if fade[1] != 0 and time <= length - trim[1] and time >= fade_out_from:
         volume_mod *= 1- ((time - fade_out_from) / fade[1])
-      self.parent.player.volume = volume_mod
+      pygame.mixer.music.set_volume(volume_mod)
       self.parent.update()
+      #print("t2 =", pygame.mixer.music.get_pos())
+      #print("parent time =", self.parent.progress_dvar.get())
 ##      if self.parent.player.time < self.parent.progress_dvar.get() and self.parent.progress_dvar.get() > 1:
       if self.parent.progress_dvar.get() >= self.track.length - self.track.trim[0]:
-        print("END")
+        print("Reached end trim")
         break
-      if self.parent.progress_dvar.get() - self.parent.player.time > 0.2:
-        print("Backtracked")
-        break
-      else:
-        self.parent.progress_dvar.set(self.parent.player.time)
+        #print("time2 =", pygame.mixer.music.get_pos())
+        #self.parent.progress_dvar.set(time)
 ##      else:
 ##        print("Looks like it skipped back")
+      #print("t3 =", pygame.mixer.music.get_pos())
     #Run code below if ended by getting to the end
-    self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
+    print("Finished Normally")
+    pygame.mixer.music.pause()
+    
+    #self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
     if self.track.loop:
       t.sleep(1)
       self.play()
@@ -691,7 +751,7 @@ class Track:
 
   def __repr__(self):
     """Simple string representation"""
-    return self.name
+    return "Track " + self.name
 ##    return "(Name: '{}', Length: {}, Trim: {}, Volume Modifier: {}, Fade Time: {}, Loop: {}, Playing: {})".format(self.name, to_minutes(self.length), self.trim, self.volume, self.fade, self.loop, self.playing)
 
   def compile_effects(self):
