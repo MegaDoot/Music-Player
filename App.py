@@ -54,6 +54,7 @@ import pygame
 import soundfile
 import mutagen.mp3
 import eyed3
+import math
 #Also import pyglet, soundfile, mutagen.mp3 and eyed3
 
 
@@ -221,7 +222,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     del effect_copy
     self.effects = effects #Make effects 'global' to the class (all methods within it can access it)
     print(track_list)
-    self.tracks = [Track(track_list[i], audio_length(track_list[i]), i, *effects[track_list[i]]) for i in range(len(track_list))]
+    self.tracks = [Track(track_list[i], 0.5 + audio_length(track_list[i]), i, *effects[track_list[i]]) for i in range(len(track_list))]
     #Create new Track object for each track name with the corrrct name, length and effects
     #Note that the 0.5 second buffer is to account for cutting tracks slightly short (a problem with the library?)
     with open(FILE_PATH + r"\Config\Order.txt") as file: #with statement automatically closes the file when it ends
@@ -417,7 +418,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     if len(self.tracks) == 0: #No tracks to display
       self.time_lbl.config(text = "00:00 / 00:00") #Default if there are no files
     else: #Gets length, converts it to minutes and displays at the end
-      self.time_lbl.config(text = "{} / {}".format(*map(to_minutes, (self.progress_dvar.get(), self.tracks[self.track_selection[0]].length))))
+      self.time_lbl.config(text = "{} / {}".format(*map(to_minutes, (self.progress_dvar.get(), math.ceil(self.tracks[self.track_selection[0]].length)))))
   
   def on_frame_config(self, event):
     """'bbox' is short for 'bounding box', so, by setting it to "all", it finds
@@ -529,6 +530,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
     os.chdir(FILE_PATH + r"\Tracks") #Go to 'Tracks' folder in current working directory
     print(track_obj, type(track_obj), track_obj.__dict__)
     pygame.mixer.music.load(track_obj.name)
+    self.offset = track_obj.trim[0] # So it starts from where it should (not where previous track was)
     print("Loaded:", track_obj.name)
     #pygame.mixer.music.play()
 ##    try: #Attempt - can cause errors (the cause of which is unknown to me)
@@ -554,6 +556,7 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       self.change_selection(lambda column:(0, 0)) #
 
   def change_selection(self, change):
+    no_play = False
     current_time = pygame.mixer.music.get_pos() / 1000
     if self.entry_present: #If textboxes present on screen, don't allow mode change
       return #Stop this procedure from running
@@ -595,17 +598,22 @@ class App(tk.Tk): #Inherits from tk.Tk so that self is also the window
       elif change[1] > 0: #If right arrow pressed, goes forward/right
         print("Current s:", current_time)
         new_offset = current_time + self.offset + 5 #Forward 5 seconds into the track
-        print("Initial offset s:", new_offset)
+        print("Initial offset s:", new_offset, track.length, track.trim[1], track.length - track.trim[1])
         if new_offset > track.length - track.trim[1]: #If number exceeds ending point of song
           new_offset = (track.length - track.trim[1]) - current_time #Set to latest possible point in the song
-      if change[1] != 0: #If either check for greater or less than 0 correct
+          print("Exceeded ->", new_offset)
+          pygame.mixer.music.stop()
+          no_play = True
+          self.offset = 0
+          self.progress_dvar.set(0)
+      if change[1] != 0 and not no_play: #If either check for greater or less than 0 correct
         #pygame.mixer.music.rewind()
         #pygame.mixer.music.rewind()
         #self.play_thread.on_hold = True
         self.offset = new_offset
         print("Offset:", self.offset)
         self.play_thread.offset_time = True
-        #self.play_thread.on_hold = False
+        #self.play_thread.on_hold = False5
     #"""
     bottom = int(self.scrollbar.get()[1] * len(self.track_frames)) #Track at the bottom currently visible tracks
     if not self.selection[0] in range(bottom - 5, bottom): #If selected track is not on screen
@@ -725,6 +733,7 @@ class PlayThread(threading.Thread):
     #Run code below if ended by getting to the end
     print("Finished Normally")
     pygame.mixer.music.pause()
+    self.parent.progress_dvar.set(length - trim[1]) # length of track - end trim: what time it should finish at
     
     #self.parent.media_player(self.parent.tracks[self.parent.selection[0]])
     if self.track.loop:

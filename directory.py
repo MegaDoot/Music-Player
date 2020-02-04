@@ -49,5 +49,5 @@ def tree_dict(path_): #Not mine (adapted from stackoverflow.com)
         tree.update({file: file_token for file in files})
         return tree  # note we discontinue iteration trough os.walk
 
-
-test = Dir(r"C:\Users\alexs\Desktop\osdotwalk")
+if __name__ == "__main__":
+    test = Dir(r"C:\Users\alexs\Desktop\osdotwalk")
