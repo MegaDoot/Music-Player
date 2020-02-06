@@ -538,7 +538,7 @@ class App(tk.Tk): # Inherits from tk.Tk so that self is also the window
 #           print("trim[0] = {}".format(seek_time))
 #           pygame.mixer.music.set_pos(seek_time) # Set time to seek_time
     print(track_frame_obj, self.offset, track_frame_obj.track.playing)
-    if not track_frame_obj.track.playing: # If is playing, should pause (after toggling)
+    if not track_frame_obj.track.name.endswith(".wav") and not track_frame_obj.track.playing: # If is playing, should pause (after toggling)
       print("Going to pause")
       # pygame.mixer.music.play(0, self.offset)
       # self.play_thread.play()
