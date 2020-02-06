@@ -216,8 +216,9 @@ class App(tk.Tk): # Inherits from tk.Tk so that self is also the window
     os.chdir(FILE_PATH + r"\Tracks") # Set CWD to 'Tracks'
     track_list = os.listdir() # List of all files in the folder 'Tracks'
 
-    for file in track_list:
-      if file not in effects.keys():
+    for file in track_list: # Iterate through each track currently loaded
+      if file not in effects.keys(): # Iterate through the names of each track
+        print(file, "is new")
         effects[file] = list(DEFAULT_PARAMS) # If new files added, make new set of default stats
     effect_copy = list(effects.keys()) # If it uses effects.keys(), there will be an IndexError as the length of it will decrease if anything is deleted
     # print(effect_copy)
@@ -305,6 +306,7 @@ class App(tk.Tk): # Inherits from tk.Tk so that self is also the window
 
     self.song_frame.bind("<Configure>", self.on_frame_config) # Whenever a widget changes this frame's confiuration, calls the method
     self.bind("<Shift_L>", self.shift_pressed) # Note that there is no binding that encompasses both shifts
+    self.bind("<Control-s>", self.save)
     if len(self.tracks) != 0: # This does not need to be done if there are not tracks and will raise exceptions
       self.bind("<space>", self.space_pressed)
       self.bind("<Return>", self.enter_pressed)
@@ -396,7 +398,7 @@ class App(tk.Tk): # Inherits from tk.Tk so that self is also the window
   #     goto(track.length - track.trim[1] - track.trim[0] - track.fade[1] - track.fade[0], track.volume)
   #     goto(track.fade[1] - track.trim[1], 0)
 
-  def save(self):
+  def save(self, event=None):
     if len(self.tracks) == 0: # If there are no tracks, there is nothing to save
       print("Not saved")
       return # Stop anything else from happening below
@@ -411,7 +413,9 @@ class App(tk.Tk): # Inherits from tk.Tk so that self is also the window
     # Save effects
     effects = {}
     for track in self.tracks:
+      print(str(track))
       effects[str(track)] = track.compile_effects() # 'compile_effects' is an ordered list of all useful attributes
+    print(effects)
     with open("Effects.json", "w") as file: # Closes 'file' when finished
       json.dump(effects, file) # Put 'effects' into 'Effects.json' as a dictionary
     print("Saved effects")
@@ -502,7 +506,7 @@ class App(tk.Tk): # Inherits from tk.Tk so that self is also the window
       return # Only play if order or select
 
     if self.mode == 1: # Order, save
-      self.save() # When changed, save state (so that closing incorrectly will still save)
+      # self.save() # When changed, save state (so that closing incorrectly will still save)
       return # Nothing else required
     track_frame_obj = self.track_frames[self.hovering_selection[0]] # Concise reference for easier access
     # Assign name to the currently selected track frame
@@ -605,7 +609,7 @@ class App(tk.Tk): # Inherits from tk.Tk so that self is also the window
         new = edits[i] # Easier acess and more efficient
         self.track_frames[edits[i]] = TrackFrame(self.song_frame, self.tracks[new]) # Make new frame to replace old one as tracks are switched
         self.track_frames[edits[i]].grid(row = edits[i], column = 0) # Add new frame to grid in correct place
-      self.save() # After each action, save state
+      # self.save() # After each action, save state
     for obj in self.track_frames: # Go through each track frame
       obj.highlight = [] # Remove highlight from each widget
     track_frame_obj = self.track_frames[self.hovering_selection[0]] # For more concise and efficient access later
@@ -622,9 +626,9 @@ class App(tk.Tk): # Inherits from tk.Tk so that self is also the window
       # """
       if change[1] != 0:
         # self.current_selection = self.hovering_selection[:]
-        print("Current s:", current_time) #  Time since last skip
+        # print("Current s:", current_time) #  Time since last skip
         # Absolute time = current_time + self.offset
-        print("Current offset:", self.offset)
+        # print("Current offset:", self.offset)
         if change[1] < 0: # If left pressed/goes backwards (serves purpose of changing stat selection and time within track)
           new_offset = current_time + self.offset - 5 # 5 backwards seconds (5000 ms)
           if new_offset < track.trim[0]: # If it goes back too far (before it should)
@@ -632,21 +636,21 @@ class App(tk.Tk): # Inherits from tk.Tk so that self is also the window
         elif change[1] > 0: # If right arrow pressed, goes forward/right
           # new_offset = current_time + self.offset + 5 # Forward 5 seconds into the track
           new_offset = current_time + self.offset + 5
-          print("Initial offset s:", new_offset, track.length, track.trim[1], track.length - track.trim[1])
+          # print("Initial offset s:", new_offset, track.length, track.trim[1], track.length - track.trim[1])
           if new_offset > track.length - track.trim[1]: # If number exceeds ending point of song
             new_offset = (track.length - track.trim[1]) - current_time # Set to latest possible point in the song
-            print("Exceeded ->", new_offset)
+            # print("Exceeded ->", new_offset)
             pygame.mixer.music.stop()
             no_play = True
             # self.progress_dvar.set(0)
         self.progress_dvar.set(new_offset)
-        print("Set progress to", new_offset)
+        # print("Set progress to", new_offset)
       if change[1] != 0 and not no_play: # If either check for greater or less than 0 correct
         # pygame.mixer.music.rewind()
         # pygame.mixer.music.rewind()
         # self.play_thread.on_hold = True
         self.offset = new_offset
-        print("Offset:", self.offset)
+        # print("Offset:", self.offset)
         self.play_thread.offset_time = True
         # self.play_thread.on_hold = False5
     # """
@@ -718,7 +722,7 @@ class PlayThread(threading.Thread):
       if self.offset_time:
         # self.parent.progress_dvar.set(self.queued_time)
         # pygame.mixer.music.set_pos(self.queued_time)
-        print("playing from {}s".format(self.parent.offset))
+        # print("playing from {}s".format(self.parent.offset))
         pygame.mixer.music.rewind()
         pygame.mixer.music.play(0, self.parent.offset) # set time to current time + offset
         # self.parent.progress_dvar.set(pygame.mixer.music.get_pos() + self.parent.offset)
@@ -728,7 +732,7 @@ class PlayThread(threading.Thread):
       # t.sleep(0.1)
       if not self.track.playing:
         pygame.mixer.music.pause()
-        print("Pause")
+        # print("Pause")
         return
       if self.parent.end:
         print("delete parent")
@@ -743,7 +747,7 @@ class PlayThread(threading.Thread):
 #         self.parent.player.volume = self.track.volume / 100
       time = pygame.mixer.music.get_pos() / 1000
       if time == -0.001:
-        print("Backtracked")
+        # print("Backtracked")
         self.parent.progress_dvar.set(length - trim[1])
         break
       self.parent.progress_dvar.set(time + self.parent.offset - 0.5)
@@ -760,8 +764,8 @@ class PlayThread(threading.Thread):
       # print("t2 =", pygame.mixer.music.get_pos())
       # print("parent time =", self.parent.progress_dvar.get())
 #       if self.parent.player.time < self.parent.progress_dvar.get() and self.parent.progress_dvar.get() > 1:
-      if self.parent.progress_dvar.get() >= self.track.length - self.track.trim[0]:
-        print("Reached end trim", self.parent.progress_dvar.get(), self.track.length, self.track.trim[0], self.track.length - self.track.trim[0])
+      if self.parent.progress_dvar.get() >= self.track.length - self.track.trim[1]:
+        print("Reached end trim", self.parent.progress_dvar.get(), self.track.length, self.track.trim[1], self.track.length - self.track.trim[1])
         break
         # print("time2 =", pygame.mixer.music.get_pos())
         # self.parent.progress_dvar.set(time)
@@ -769,7 +773,7 @@ class PlayThread(threading.Thread):
 #         print("Looks like it skipped back")
       # print("t3 =", pygame.mixer.music.get_pos())
     # Run code below if ended by getting to the end
-    print("Finished Normally")
+    # print("Finished Normally")
     self.parent.offset = length
     pygame.mixer.music.stop()
     self.parent.progress_dvar.set(length - trim[1]) # length of track - end trim: what time it should finish at
@@ -803,7 +807,7 @@ class Track:
 
   def __repr__(self):
     """Simple string representation"""
-    return "Track " + self.name
+    return self.name
 #     return "(Name: '{}', Length: {}, Trim: {}, Volume Modifier: {}, Fade Time: {}, Loop: {}, Playing: {})".format(self.name, to_minutes(self.length), self.trim, self.volume, self.fade, self.loop, self.playing)
 
   def compile_effects(self):
